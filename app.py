@@ -1,7 +1,8 @@
 """
 app.py - Leverage Signal (Streamlit)
 TFs: 15m, 1h, 4h only.
-Background context: CoinGlass OI + liq heatmap, RSI, funding, ADX.
+Manual Market Calculator for OI / liq heatmap (user types values from CoinGlass website).
+Auto: RSI, ADX, funding from price APIs.
 """
 
 import sys
@@ -139,6 +140,8 @@ if "symbol" not in st.session_state:
     st.session_state.symbol = "BTCUSD"
 if "paper_msg" not in st.session_state:
     st.session_state.paper_msg = ""
+if "manual_ctx_result" not in st.session_state:
+    st.session_state.manual_ctx_result = None
 
 st.markdown("### Leverage Signal")
 st.caption("%s IST · TF focus: 15m · 1h · 4h" % now_ist().strftime("%Y-%m-%d %H:%M:%S"))
@@ -160,6 +163,170 @@ def levels_for_side(side, price, vol):
     if side in SHORT_SIDES:
         return price * (1 - K_PROFIT * vol), price * (1 + K_STOP * vol)
     return price * (1 + K_PROFIT * vol), price * (1 - K_STOP * vol)
+
+
+def oi_price_quadrant(price_chg_pct, oi_chg_pct):
+    if oi_chg_pct is None:
+        return "UNKNOWN"
+    up_p = price_chg_pct >= 0
+    up_o = oi_chg_pct >= 0
+    if up_p and up_o:
+        return "BULL_CONTINUATION"
+    if up_p and not up_o:
+        return "BULL_FLUSH"
+    if not up_p and up_o:
+        return "BEAR_CONTINUATION"
+    return "BEAR_FLUSH"
+
+
+def run_manual_calculator(
+    price,
+    price_chg_pct,
+    oi_now,
+    oi_chg_pct,
+    long_liq_usd,
+    short_liq_usd,
+    short_band,
+    long_band,
+    funding_pct,
+    rsi_val,
+    adx_val,
+):
+    """Calculator: numbers in → conclusion table out."""
+    quad = oi_price_quadrant(price_chg_pct, oi_chg_pct)
+
+    # Heatmap bias
+    heat_note = []
+    heat_bias = "NEUTRAL"
+    if short_band and price > 0:
+        dist_up = (short_band - price) / price * 100.0
+        heat_note.append("Short-liq band $%.0f is %.2f%% above price (squeeze fuel up)" % (short_band, dist_up))
+        if dist_up <= 1.5:
+            heat_bias = "LONG_SQUEEZE_NEAR"
+    if long_band and price > 0:
+        dist_dn = (price - long_band) / price * 100.0
+        heat_note.append("Long-liq band $%.0f is %.2f%% below price (flush fuel down)" % (long_band, dist_dn))
+        if dist_dn <= 1.5 and heat_bias == "NEUTRAL":
+            heat_bias = "SHORT_FLUSH_NEAR"
+        elif dist_dn <= 1.5 and heat_bias == "LONG_SQUEEZE_NEAR":
+            heat_bias = "BOTH_NEAR"
+
+    # Liq flow
+    liq_bias = "NEUTRAL"
+    if long_liq_usd or short_liq_usd:
+        if long_liq_usd > short_liq_usd * 1.5:
+            liq_bias = "LONGS_FLUSHED"  # longs already liquidated → often bounce risk
+        elif short_liq_usd > long_liq_usd * 1.5:
+            liq_bias = "SHORTS_FLUSHED"  # shorts liquidated → often dip risk
+
+    # Funding
+    fund_bias = "NEUTRAL"
+    if funding_pct is not None:
+        if funding_pct >= 0.03:
+            fund_bias = "CROWDED_LONG"
+        elif funding_pct <= -0.03:
+            fund_bias = "CROWDED_SHORT"
+
+    # RSI
+    rsi_bias = "NEUTRAL"
+    if rsi_val is not None:
+        if rsi_val >= 70:
+            rsi_bias = "OVERBOUGHT"
+        elif rsi_val <= 30:
+            rsi_bias = "OVERSOLD"
+
+    # Combined score for LONG vs SHORT
+    long_score = 0
+    short_score = 0
+    reasons_long = []
+    reasons_short = []
+
+    if quad == "BULL_CONTINUATION":
+        long_score += 2
+        reasons_long.append("OI up + price up (new longs)")
+    elif quad == "BEAR_CONTINUATION":
+        short_score += 2
+        reasons_short.append("OI up + price down (new shorts)")
+    elif quad == "BULL_FLUSH":
+        short_score += 1
+        reasons_short.append("Price up but OI down (short cover / weak rally)")
+    elif quad == "BEAR_FLUSH":
+        long_score += 1
+        reasons_long.append("Price down but OI down (long flush / weak dump)")
+
+    if heat_bias == "LONG_SQUEEZE_NEAR":
+        long_score += 2
+        reasons_long.append("Short-liq cluster nearby above")
+    if heat_bias == "SHORT_FLUSH_NEAR":
+        short_score += 2
+        reasons_short.append("Long-liq cluster nearby below")
+
+    if liq_bias == "LONGS_FLUSHED":
+        long_score += 1
+        reasons_long.append("Recent long liquidations dominant")
+    if liq_bias == "SHORTS_FLUSHED":
+        short_score += 1
+        reasons_short.append("Recent short liquidations dominant")
+
+    if fund_bias == "CROWDED_LONG":
+        short_score += 1
+        reasons_short.append("Funding crowded long")
+    if fund_bias == "CROWDED_SHORT":
+        long_score += 1
+        reasons_long.append("Funding crowded short")
+
+    if rsi_bias == "OVERSOLD":
+        long_score += 1
+        reasons_long.append("RSI oversold")
+    if rsi_bias == "OVERBOUGHT":
+        short_score += 1
+        reasons_short.append("RSI overbought")
+
+    if adx_val is not None and adx_val >= 25:
+        if long_score > short_score:
+            long_score += 1
+            reasons_long.append("ADX strong trend (≥25)")
+        elif short_score > long_score:
+            short_score += 1
+            reasons_short.append("ADX strong trend (≥25)")
+
+    if long_score > short_score + 1:
+        bias = "LONG"
+        conf = min(95, 50 + long_score * 8)
+    elif short_score > long_score + 1:
+        bias = "SHORT"
+        conf = min(95, 50 + short_score * 8)
+    else:
+        bias = "HOLD"
+        conf = 40 + max(long_score, short_score) * 5
+
+    summary_rows = [
+        {"Field": "Price", "Value": "$%s" % "{:,.0f}".format(price) if price else "—"},
+        {"Field": "Price change %", "Value": "%.2f" % price_chg_pct},
+        {"Field": "Open Interest", "Value": "{:,.0f}".format(oi_now) if oi_now else "—"},
+        {"Field": "OI change %", "Value": "%.2f" % oi_chg_pct if oi_chg_pct is not None else "—"},
+        {"Field": "OI × Price quadrant", "Value": quad.replace("_", " ")},
+        {"Field": "Long liq USD", "Value": "{:,.0f}".format(long_liq_usd) if long_liq_usd else "—"},
+        {"Field": "Short liq USD", "Value": "{:,.0f}".format(short_liq_usd) if short_liq_usd else "—"},
+        {"Field": "Short-liq band (above)", "Value": "$%s" % "{:,.0f}".format(short_band) if short_band else "—"},
+        {"Field": "Long-liq band (below)", "Value": "$%s" % "{:,.0f}".format(long_band) if long_band else "—"},
+        {"Field": "Funding %", "Value": "%.4f" % funding_pct if funding_pct is not None else "—"},
+        {"Field": "RSI (1h)", "Value": "%.1f" % rsi_val if rsi_val is not None else "—"},
+        {"Field": "ADX (1h)", "Value": "%.1f" % adx_val if adx_val is not None else "—"},
+        {"Field": "Heatmap note", "Value": "; ".join(heat_note) if heat_note else "—"},
+        {"Field": "Context bias", "Value": bias},
+        {"Field": "Context confidence", "Value": "%d" % conf},
+        {"Field": "Why LONG", "Value": "; ".join(reasons_long) if reasons_long else "—"},
+        {"Field": "Why SHORT", "Value": "; ".join(reasons_short) if reasons_short else "—"},
+    ]
+    return {
+        "bias": bias,
+        "confidence": conf,
+        "quadrant": quad,
+        "summary": summary_rows,
+        "long_score": long_score,
+        "short_score": short_score,
+    }
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -191,36 +358,23 @@ def fetch_candles(symbol, resolution, days):
 
 
 @st.cache_data(ttl=180, show_spinner=False)
-def fetch_market_context(symbol, price, chg_pct):
-    """OI + heatmap (CoinGlass) + funding (Delta) — runs once per refresh."""
-    ctx = {}
+def fetch_funding_session(symbol):
+    out = {"funding_pct": None, "session": "—"}
     try:
         from market_context import build_market_context
         ctx = build_market_context(symbol) or {}
-    except Exception as e:
-        ctx = {"error": str(e)}
-    try:
-        from coinglass_client import build_coinglass_snapshot
-        cg = build_coinglass_snapshot(symbol, price=float(price or 0), price_chg_pct=float(chg_pct or 0))
-        ctx["cg"] = cg
-        # prefer CG fields when present
-        if cg.get("ok"):
-            ctx["cg_ok"] = True
-            ctx["cg_oi_now"] = cg.get("oi_now")
-            ctx["cg_oi_chg_pct"] = cg.get("oi_chg_pct")
-            ctx["cg_long_liq_usd"] = cg.get("long_liq_usd")
-            ctx["cg_short_liq_usd"] = cg.get("short_liq_usd")
-            ctx["cg_short_band"] = cg.get("nearest_short_band")
-            ctx["cg_long_band"] = cg.get("nearest_long_band")
-            ctx["oi_price_quadrant"] = cg.get("oi_price_quadrant")
-            ctx["cg_error"] = cg.get("error") or ""
-        else:
-            ctx["cg_ok"] = False
-            ctx["cg_error"] = cg.get("error") or "CoinGlass unavailable"
-    except Exception as e:
-        ctx["cg_ok"] = False
-        ctx["cg_error"] = str(e)
-    return ctx
+        out["funding_pct"] = ctx.get("funding_pct")
+        out["session"] = ctx.get("session") or "—"
+    except Exception:
+        try:
+            t = requests.get("%s/v2/tickers/%s" % (DELTA_BASE, symbol), timeout=5).json().get("result", {})
+            fr = float(t.get("funding_rate") or 0)
+            out["funding_pct"] = fr * 100.0 if abs(fr) < 0.05 else fr
+        except Exception:
+            pass
+        h = datetime.now(timezone.utc).hour
+        out["session"] = "ASIA" if h < 7 or h >= 21 else ("LONDON" if h < 13 else "US")
+    return out
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -326,7 +480,7 @@ def make_colored_table(df):
     for col in df.columns:
         html += "<th style='padding:7px; text-align:center; border:1px solid #334155;'>%s</th>" % col
     html += "</tr></thead><tbody>"
-    signal_cols = ["Signal", "Model", "Candle", "Side"]
+    signal_cols = ["Signal", "Model", "Candle", "Side", "Context bias"]
     for _, row in df.iterrows():
         html += "<tr>"
         for col in df.columns:
@@ -368,8 +522,7 @@ else:
     st.markdown("## %s  $%s" % (name, "{:,.2f}".format(live_price)))
     st.markdown("%s%.2f%% (24h)" % ("+" if chg >= 0 else "", chg))
 
-# ---- Market context (OI, heatmap, RSI, funding) — background layer ----
-ctx = fetch_market_context(symbol, live_price, chg)
+# Auto RSI / ADX / funding
 h1_candles = fetch_candles(symbol, "1h", 14)
 rsi_val = None
 adx_val = None
@@ -386,72 +539,160 @@ if h1_candles and len(h1_candles) >= 20:
     except Exception:
         adx_val = None
 
-st.markdown("---")
-st.subheader("Market context")
-st.caption("Open interest · liquidation heatmap (CoinGlass) · RSI · funding · ADX")
+fund_sess = fetch_funding_session(symbol)
+auto_funding = fund_sess.get("funding_pct")
 
+st.markdown("---")
+st.subheader("Market context (auto)")
 m1, m2, m3, m4 = st.columns(4)
 with m1:
     st.metric("RSI (1h)", "%.1f" % rsi_val if rsi_val is not None else "—")
 with m2:
     st.metric("ADX (1h)", "%.1f" % adx_val if adx_val is not None else "—")
 with m3:
-    fp = ctx.get("funding_pct")
-    st.metric("Funding %", "%.4f" % fp if fp is not None else "—")
+    st.metric("Funding %", "%.4f" % auto_funding if auto_funding is not None else "—")
 with m4:
-    st.metric("Session", ctx.get("session") or "—")
+    st.metric("Session", fund_sess.get("session") or "—")
 
-cg_ok = ctx.get("cg_ok")
-oi_now = ctx.get("cg_oi_now") or ctx.get("oi_usd")
-oi_chg = ctx.get("cg_oi_chg_pct")
-quad = ctx.get("oi_price_quadrant") or "UNKNOWN"
+# ========== MANUAL CALCULATOR (like a calculator) ==========
+st.markdown("---")
+st.subheader("Manual OI / Liquidation calculator")
+st.caption(
+    "Open CoinGlass in another tab → copy numbers → type here → press **Calculate**. "
+    "No paid API needed."
+)
 
-m5, m6, m7 = st.columns(3)
-with m5:
-    if oi_now is not None:
-        st.metric("Open Interest", "{:,.0f}".format(float(oi_now)))
-    else:
-        st.metric("Open Interest", "—")
-with m6:
-    st.metric("OI change %", "%.2f" % oi_chg if oi_chg is not None else "—")
-with m7:
-    st.metric("OI × Price", quad.replace("_", " "))
+with st.form("manual_ctx_form", clear_on_submit=False):
+    st.write("**From CoinGlass / chart (editable)**")
+    c1, c2 = st.columns(2)
+    with c1:
+        in_price = st.number_input(
+            "Price (USD)",
+            min_value=0.0,
+            value=float(live_price) if live_price > 0 else 0.0,
+            step=1.0,
+            format="%.2f",
+        )
+        in_price_chg = st.number_input(
+            "Price change % (e.g. 24h)",
+            value=float(chg),
+            step=0.1,
+            format="%.2f",
+        )
+        in_oi = st.number_input(
+            "Open Interest (contracts or USD — your choice)",
+            min_value=0.0,
+            value=0.0,
+            step=1000.0,
+            format="%.0f",
+        )
+        in_oi_chg = st.number_input(
+            "OI change %",
+            value=0.0,
+            step=0.1,
+            format="%.2f",
+            help="Positive = OI rising, negative = OI falling",
+        )
+    with c2:
+        in_long_liq = st.number_input(
+            "Recent long liquidation USD",
+            min_value=0.0,
+            value=0.0,
+            step=1000.0,
+            format="%.0f",
+        )
+        in_short_liq = st.number_input(
+            "Recent short liquidation USD",
+            min_value=0.0,
+            value=0.0,
+            step=1000.0,
+            format="%.0f",
+        )
+        in_short_band = st.number_input(
+            "Nearest short-liq band (price ABOVE)",
+            min_value=0.0,
+            value=0.0,
+            step=10.0,
+            format="%.0f",
+            help="Yellow cluster above current price on heatmap",
+        )
+        in_long_band = st.number_input(
+            "Nearest long-liq band (price BELOW)",
+            min_value=0.0,
+            value=0.0,
+            step=10.0,
+            format="%.0f",
+            help="Yellow cluster below current price on heatmap",
+        )
 
-# Heatmap bands
-short_band = ctx.get("cg_short_band")
-long_band = ctx.get("cg_long_band")
-long_liq = ctx.get("cg_long_liq_usd") or 0
-short_liq = ctx.get("cg_short_liq_usd") or 0
+    st.write("**Optional overrides (leave as auto if unsure)**")
+    o1, o2 = st.columns(2)
+    with o1:
+        in_funding = st.number_input(
+            "Funding %",
+            value=float(auto_funding) if auto_funding is not None else 0.0,
+            step=0.001,
+            format="%.4f",
+        )
+        in_rsi = st.number_input(
+            "RSI",
+            min_value=0.0,
+            max_value=100.0,
+            value=float(rsi_val) if rsi_val is not None else 50.0,
+            step=0.5,
+            format="%.1f",
+        )
+    with o2:
+        in_adx = st.number_input(
+            "ADX",
+            min_value=0.0,
+            value=float(adx_val) if adx_val is not None else 20.0,
+            step=0.5,
+            format="%.1f",
+        )
 
-ha, hb = st.columns(2)
-with ha:
-    st.write("**Liq heatmap (above = short fuel)**")
-    if short_band:
-        st.write("Nearest short-liq band: **$%s**" % "{:,.0f}".format(float(short_band)))
-    else:
-        st.write("Short band: —")
-    st.write("Recent short liq USD: **%s**" % ("{:,.0f}".format(float(short_liq)) if short_liq else "—"))
-with hb:
-    st.write("**Liq heatmap (below = long fuel)**")
-    if long_band:
-        st.write("Nearest long-liq band: **$%s**" % "{:,.0f}".format(float(long_band)))
-    else:
-        st.write("Long band: —")
-    st.write("Recent long liq USD: **%s**" % ("{:,.0f}".format(float(long_liq)) if long_liq else "—"))
+    submitted = st.form_submit_button("Calculate context bias", use_container_width=True)
 
-if not cg_ok:
-    st.info(
-        "CoinGlass: %s — add secret **COINGLASS_API_KEY** in Streamlit Cloud "
-        "(App settings → Secrets) for live OI + heatmap."
-        % (ctx.get("cg_error") or "not connected")
+if submitted:
+    st.session_state.manual_ctx_result = run_manual_calculator(
+        price=in_price,
+        price_chg_pct=in_price_chg,
+        oi_now=in_oi if in_oi > 0 else None,
+        oi_chg_pct=in_oi_chg,
+        long_liq_usd=in_long_liq,
+        short_liq_usd=in_short_liq,
+        short_band=in_short_band if in_short_band > 0 else None,
+        long_band=in_long_band if in_long_band > 0 else None,
+        funding_pct=in_funding,
+        rsi_val=in_rsi,
+        adx_val=in_adx,
     )
 
-# RSI quick read
-if rsi_val is not None:
-    if rsi_val >= 70:
-        st.caption("RSI elevated (≥70) — exhaustion risk for longs")
-    elif rsi_val <= 30:
-        st.caption("RSI washed (≤30) — bounce risk for shorts")
+result = st.session_state.manual_ctx_result
+if result:
+    st.markdown("#### Calculator result")
+    bcol1, bcol2, bcol3 = st.columns(3)
+    with bcol1:
+        st.metric("Context bias", result["bias"])
+    with bcol2:
+        st.metric("Confidence", "%d" % result["confidence"])
+    with bcol3:
+        st.metric("OI × Price", result["quadrant"].replace("_", " "))
+
+    st.dataframe(
+        pd.DataFrame(result["summary"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    if result["bias"] == "LONG":
+        st.success("Manual context leans **LONG**. Compare with model table below.")
+    elif result["bias"] == "SHORT":
+        st.error("Manual context leans **SHORT**. Compare with model table below.")
+    else:
+        st.warning("Manual context is **HOLD** (mixed scores). Prefer model + candle AGREE only.")
+else:
+    st.info("Fill the numbers from CoinGlass and press **Calculate context bias**.")
 
 # ---- Model loop (15m / 1h / 4h only) ----
 model_rows, candle_rows, compare_rows = [], [], []

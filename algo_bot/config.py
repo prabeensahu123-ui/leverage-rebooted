@@ -1,6 +1,7 @@
 """
 algo_bot/config.py
 Single source of truth for the bot and the dashboard.
+Focused TFs only: 15m, 1h, 4h (less noise).
 """
 
 SYMBOL = "BTCUSD"
@@ -13,7 +14,6 @@ TRADE_SYMBOLS = [
     "PAXGUSD",
 ]
 
-# Paper entries allowed only for these (models still train for all).
 PAPER_TRADE_SYMBOLS = [
     "BTCUSD",
     "ETHUSD",
@@ -30,6 +30,7 @@ ASSET_LABELS = {
 
 MODE = "PAPER"
 
+# Only 15m / 1h / 4h — 30m and Daily removed
 TIMEFRAMES = {
     "15m": {
         "resolution": "15m",
@@ -37,17 +38,8 @@ TIMEFRAMES = {
         "max_holding_bars": 32,
         "label": "15 Minutes",
         "hold": "~8h",
-        "trade_enabled": False,
-        "max_trades_per_day": 4,
-    },
-    "30m": {
-        "resolution": "30m",
-        "days": 45,
-        "max_holding_bars": 28,
-        "label": "30 Minutes",
-        "hold": "~14h",
         "trade_enabled": True,
-        "max_trades_per_day": 2,
+        "max_trades_per_day": 3,
     },
     "1h": {
         "resolution": "1h",
@@ -67,15 +59,6 @@ TIMEFRAMES = {
         "trade_enabled": True,
         "max_trades_per_day": 1,
     },
-    "1D": {
-        "resolution": "1d",
-        "days": 300,
-        "max_holding_bars": 15,
-        "label": "Daily",
-        "hold": "~15d",
-        "trade_enabled": True,
-        "max_trades_per_day": 1,
-    },
 }
 
 DASHBOARD_TIMEFRAMES = {
@@ -85,13 +68,6 @@ DASHBOARD_TIMEFRAMES = {
         "max_holding_bars": 32,
         "label": "15m",
         "hold": "~8h",
-    },
-    "30m": {
-        "resolution": "30m",
-        "days": 45,
-        "max_holding_bars": 28,
-        "label": "30m",
-        "hold": "~14h",
     },
     "1h": {
         "resolution": "1h",
@@ -106,13 +82,6 @@ DASHBOARD_TIMEFRAMES = {
         "max_holding_bars": 18,
         "label": "4h",
         "hold": "~3d",
-    },
-    "1D": {
-        "resolution": "1d",
-        "days": 300,
-        "max_holding_bars": 15,
-        "label": "Daily",
-        "hold": "~15d",
     },
 }
 

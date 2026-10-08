@@ -1,5 +1,4 @@
-"""app.py - plain 3-part loader."""
+"""app.py"""
 import pathlib
-_root = pathlib.Path(__file__).resolve().parent
-_src = "".join((_root / ("_mp%d.py" % i)).read_text(encoding="utf-8") for i in range(3))
-exec(compile(_src, str(_root / "app.py"), "exec"), globals())
+_r=pathlib.Path(__file__).resolve().parent
+exec(compile("".join((_r/("_q%d.py"%i)).read_text(encoding="utf-8") for i in range(4)), str(_r/"app.py"), "exec"), globals())

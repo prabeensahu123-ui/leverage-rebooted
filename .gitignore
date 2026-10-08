@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# Data & logs (keep algo bot paper-trade files so Actions + Streamlit can share them)
+*.csv
+*.json
+!algo_bot/state.json
+!algo_bot/trades.csv
+paper_trade_*.csv
+paper_trade_*.json
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml

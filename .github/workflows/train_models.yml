@@ -1,0 +1,43 @@
+name: Daily Model Train
+
+on:
+  schedule:
+    - cron: "0 12 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt joblib
+
+      - name: Train models
+        run: python -m algo_bot.train_daily
+
+      - name: Commit models
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p models
+          git add models/*.joblib models/*.json || true
+          if git diff --cached --quiet; then
+            echo "No model file changes"
+          else
+            git commit -m "chore: daily model train $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi

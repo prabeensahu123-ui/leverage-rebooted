@@ -1,6 +1,5 @@
-"""app.py - decompresses body from z0/z1/z2."""
-import pathlib, zlib, base64
+"""app.py - loads plain parts (no zlib)."""
+import pathlib
 _root = pathlib.Path(__file__).resolve().parent
-_b64 = "".join((_root / ("_z%d.txt" % i)).read_text(encoding="utf-8") for i in range(3))
-_src = zlib.decompress(base64.b64decode(_b64)).decode("utf-8")
+_src = (_root / "_app_part1.py").read_text(encoding="utf-8") + (_root / "_app_part2.py").read_text(encoding="utf-8")
 exec(compile(_src, str(_root / "app.py"), "exec"), globals())

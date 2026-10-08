@@ -1,9 +1,7 @@
 """
-app.py - Leverage Signal Engine (Streamlit)
-- Repo root on sys.path so imports work on Cloud
-- Soft imports with on-screen boot errors
-- TP/SL only when Signal is LONG or SHORT (not HOLD lean)
-- No auto sleep-rerun loop
+app.py - Leverage Signal (Streamlit)
+TFs: 15m, 1h, 4h only.
+Background context: CoinGlass OI + liq heatmap, RSI, funding, ADX.
 """
 
 import sys
@@ -67,6 +65,20 @@ except Exception as e:
     BOOT_ERRORS.append("candle_patterns: %s" % e)
 
 try:
+    from signal_engine import rsi as rsi_fn
+except Exception:
+
+    def rsi_fn(prices, period=14):
+        return 50.0
+
+try:
+    from features import adx as adx_fn
+except Exception:
+
+    def adx_fn(h, l, c, period=14):
+        return 20.0
+
+try:
     from algo_bot.config import (
         DELTA_BASE,
         K_PROFIT,
@@ -89,10 +101,8 @@ except Exception as e:
     MIN_LABEL_MOVE_PCT = 0.0015
     TIMEFRAMES = {
         "15m": {"resolution": "15m", "days": 30, "max_holding_bars": 32, "label": "15m", "hold": "~8h"},
-        "30m": {"resolution": "30m", "days": 45, "max_holding_bars": 28, "label": "30m", "hold": "~14h"},
         "1h": {"resolution": "1h", "days": 90, "max_holding_bars": 24, "label": "1h", "hold": "~24h"},
         "4h": {"resolution": "4h", "days": 180, "max_holding_bars": 18, "label": "4h", "hold": "~3d"},
-        "1D": {"resolution": "1d", "days": 300, "max_holding_bars": 15, "label": "Daily", "hold": "~15d"},
     }
     ASSETS = ["BTCUSD", "ETHUSD", "SOLUSD", "XAUTUSD", "PAXGUSD"]
 
@@ -131,10 +141,10 @@ if "paper_msg" not in st.session_state:
     st.session_state.paper_msg = ""
 
 st.markdown("### Leverage Signal")
-st.caption("%s IST · main file: app.py" % now_ist().strftime("%Y-%m-%d %H:%M:%S"))
+st.caption("%s IST · TF focus: 15m · 1h · 4h" % now_ist().strftime("%Y-%m-%d %H:%M:%S"))
 
 if BOOT_ERRORS:
-    st.error("Boot warnings (limited mode). Fix these if signals show N/A:")
+    st.error("Boot warnings (limited mode):")
     for err in BOOT_ERRORS:
         st.code(err)
 else:
@@ -180,6 +190,39 @@ def fetch_candles(symbol, resolution, days):
         return []
 
 
+@st.cache_data(ttl=180, show_spinner=False)
+def fetch_market_context(symbol, price, chg_pct):
+    """OI + heatmap (CoinGlass) + funding (Delta) — runs once per refresh."""
+    ctx = {}
+    try:
+        from market_context import build_market_context
+        ctx = build_market_context(symbol) or {}
+    except Exception as e:
+        ctx = {"error": str(e)}
+    try:
+        from coinglass_client import build_coinglass_snapshot
+        cg = build_coinglass_snapshot(symbol, price=float(price or 0), price_chg_pct=float(chg_pct or 0))
+        ctx["cg"] = cg
+        # prefer CG fields when present
+        if cg.get("ok"):
+            ctx["cg_ok"] = True
+            ctx["cg_oi_now"] = cg.get("oi_now")
+            ctx["cg_oi_chg_pct"] = cg.get("oi_chg_pct")
+            ctx["cg_long_liq_usd"] = cg.get("long_liq_usd")
+            ctx["cg_short_liq_usd"] = cg.get("short_liq_usd")
+            ctx["cg_short_band"] = cg.get("nearest_short_band")
+            ctx["cg_long_band"] = cg.get("nearest_long_band")
+            ctx["oi_price_quadrant"] = cg.get("oi_price_quadrant")
+            ctx["cg_error"] = cg.get("error") or ""
+        else:
+            ctx["cg_ok"] = False
+            ctx["cg_error"] = cg.get("error") or "CoinGlass unavailable"
+    except Exception as e:
+        ctx["cg_ok"] = False
+        ctx["cg_error"] = str(e)
+    return ctx
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def run_balanced_model(symbol, resolution, close_t, high_t, low_t, open_t, vol_t, max_holding):
     if not build_features or not triple_barrier_labels or not RandomForestClassifier:
@@ -219,12 +262,8 @@ def run_balanced_model(symbol, resolution, close_t, high_t, low_t, open_t, vol_t
         X = np.array(X)[:, WINNING_FEATURE_INDICES]
         y = np.array(y)
         model = RandomForestClassifier(
-            n_estimators=30,
-            max_depth=4,
-            min_samples_leaf=12,
-            class_weight="balanced",
-            random_state=42,
-            n_jobs=1,
+            n_estimators=30, max_depth=4, min_samples_leaf=12,
+            class_weight="balanced", random_state=42, n_jobs=1,
         )
         model.fit(X, y)
 
@@ -329,6 +368,92 @@ else:
     st.markdown("## %s  $%s" % (name, "{:,.2f}".format(live_price)))
     st.markdown("%s%.2f%% (24h)" % ("+" if chg >= 0 else "", chg))
 
+# ---- Market context (OI, heatmap, RSI, funding) — background layer ----
+ctx = fetch_market_context(symbol, live_price, chg)
+h1_candles = fetch_candles(symbol, "1h", 14)
+rsi_val = None
+adx_val = None
+if h1_candles and len(h1_candles) >= 20:
+    closes = np.array([c["close"] for c in h1_candles], dtype=float)
+    highs = np.array([c["high"] for c in h1_candles], dtype=float)
+    lows = np.array([c["low"] for c in h1_candles], dtype=float)
+    try:
+        rsi_val = float(rsi_fn(closes, 14))
+    except Exception:
+        rsi_val = None
+    try:
+        adx_val = float(adx_fn(highs, lows, closes, 14))
+    except Exception:
+        adx_val = None
+
+st.markdown("---")
+st.subheader("Market context")
+st.caption("Open interest · liquidation heatmap (CoinGlass) · RSI · funding · ADX")
+
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    st.metric("RSI (1h)", "%.1f" % rsi_val if rsi_val is not None else "—")
+with m2:
+    st.metric("ADX (1h)", "%.1f" % adx_val if adx_val is not None else "—")
+with m3:
+    fp = ctx.get("funding_pct")
+    st.metric("Funding %", "%.4f" % fp if fp is not None else "—")
+with m4:
+    st.metric("Session", ctx.get("session") or "—")
+
+cg_ok = ctx.get("cg_ok")
+oi_now = ctx.get("cg_oi_now") or ctx.get("oi_usd")
+oi_chg = ctx.get("cg_oi_chg_pct")
+quad = ctx.get("oi_price_quadrant") or "UNKNOWN"
+
+m5, m6, m7 = st.columns(3)
+with m5:
+    if oi_now is not None:
+        st.metric("Open Interest", "{:,.0f}".format(float(oi_now)))
+    else:
+        st.metric("Open Interest", "—")
+with m6:
+    st.metric("OI change %", "%.2f" % oi_chg if oi_chg is not None else "—")
+with m7:
+    st.metric("OI × Price", quad.replace("_", " "))
+
+# Heatmap bands
+short_band = ctx.get("cg_short_band")
+long_band = ctx.get("cg_long_band")
+long_liq = ctx.get("cg_long_liq_usd") or 0
+short_liq = ctx.get("cg_short_liq_usd") or 0
+
+ha, hb = st.columns(2)
+with ha:
+    st.write("**Liq heatmap (above = short fuel)**")
+    if short_band:
+        st.write("Nearest short-liq band: **$%s**" % "{:,.0f}".format(float(short_band)))
+    else:
+        st.write("Short band: —")
+    st.write("Recent short liq USD: **%s**" % ("{:,.0f}".format(float(short_liq)) if short_liq else "—"))
+with hb:
+    st.write("**Liq heatmap (below = long fuel)**")
+    if long_band:
+        st.write("Nearest long-liq band: **$%s**" % "{:,.0f}".format(float(long_band)))
+    else:
+        st.write("Long band: —")
+    st.write("Recent long liq USD: **%s**" % ("{:,.0f}".format(float(long_liq)) if long_liq else "—"))
+
+if not cg_ok:
+    st.info(
+        "CoinGlass: %s — add secret **COINGLASS_API_KEY** in Streamlit Cloud "
+        "(App settings → Secrets) for live OI + heatmap."
+        % (ctx.get("cg_error") or "not connected")
+    )
+
+# RSI quick read
+if rsi_val is not None:
+    if rsi_val >= 70:
+        st.caption("RSI elevated (≥70) — exhaustion risk for longs")
+    elif rsi_val <= 30:
+        st.caption("RSI washed (≤30) — bounce risk for shorts")
+
+# ---- Model loop (15m / 1h / 4h only) ----
 model_rows, candle_rows, compare_rows = [], [], []
 progress = st.progress(0)
 status = st.empty()
@@ -355,13 +480,8 @@ for i, (tf_key, cfg) in enumerate(TIMEFRAMES.items()):
 
     try:
         long_p, short_p, hold_p, cur_vol = run_balanced_model(
-            symbol,
-            cfg["resolution"],
-            tuple(close),
-            tuple(high),
-            tuple(low),
-            tuple(open_),
-            tuple(volume),
+            symbol, cfg["resolution"],
+            tuple(close), tuple(high), tuple(low), tuple(open_), tuple(volume),
             _max_hold(cfg),
         )
         signal, conf = decide_signal(long_p, short_p, hold_p)
@@ -413,7 +533,7 @@ progress.empty()
 
 st.markdown("---")
 st.subheader("1) Model Predictions")
-st.caption("TP/SL only when Signal is LONG or SHORT. HOLD means no trade levels.")
+st.caption("Only 15m · 1h · 4h. TP/SL only on LONG or SHORT.")
 st.markdown(make_colored_table(pd.DataFrame(model_rows)), unsafe_allow_html=True)
 
 st.markdown("---")
@@ -421,7 +541,7 @@ st.subheader("2) Candlestick Patterns")
 st.markdown(make_colored_table(pd.DataFrame(candle_rows)), unsafe_allow_html=True)
 
 st.markdown("---")
-st.subheader("3) Do they agree?")
+st.subheader("3) Agreement")
 st.markdown(make_colored_table(pd.DataFrame(compare_rows)), unsafe_allow_html=True)
 
 st.markdown("---")
@@ -430,7 +550,6 @@ st.subheader("Paper Trading")
 if st.button("Run Paper Check Now", use_container_width=True):
     try:
         from algo_bot.bot import run_once
-
         run_once()
         st.session_state.paper_msg = "Paper check finished at %s IST" % now_ist().strftime("%H:%M:%S")
     except Exception as e:

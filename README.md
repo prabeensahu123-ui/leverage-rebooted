@@ -21,4 +21,4 @@ python -m algo_bot.bot once
 
 - Models (`models/*.joblib`) are produced by `python -m algo_bot.train_daily` or the Daily Model Train workflow.
 - Paper bot: `python -m algo_bot.bot once`
-- BTC chart logs now include range position, SMA20/50, RSI, trend bias and volume ratio for faster context.
+- BTC chart logs now include range position, SMA20/50, RSI, ATR(14), trend bias, volume ratio, and caution flags (e.g. upper-range low-vol) for faster context.

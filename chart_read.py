@@ -1,6 +1,7 @@
 """
 chart_read.py — richer chart snapshot helpers for the paper bot.
-Provides last price, prior range, position, simple trend and momentum context.
+Provides last price, prior range, position, simple trend, momentum, ATR and volume context.
+Enhanced with caution flags for high range position + low volume (chasing risk).
 """
 
 import numpy as np
@@ -26,6 +27,22 @@ def _rsi(closes, period=14):
     return 100 - (100 / (1 + rs))
 
 
+def _atr(highs, lows, closes, period=14):
+    if len(closes) < 2:
+        return 0.0
+    trs = []
+    for i in range(1, len(closes)):
+        tr = max(
+            highs[i] - lows[i],
+            abs(highs[i] - closes[i-1]),
+            abs(lows[i] - closes[i-1])
+        )
+        trs.append(tr)
+    if not trs:
+        return 0.0
+    return float(np.mean(trs[-period:])) if len(trs) >= period else float(np.mean(trs))
+
+
 def snapshot(candles):
     if not candles:
         return {}
@@ -44,6 +61,7 @@ def snapshot(candles):
     sma20 = _sma(closes, 20)
     sma50 = _sma(closes, 50) if len(closes) >= 50 else sma20
     rsi14 = _rsi(closes, 14)
+    atr14 = _atr(highs, lows, closes, 14)
 
     # simple trend bias
     trend = "neutral"
@@ -56,6 +74,15 @@ def snapshot(candles):
     vol_last = float(vols[-1]) if len(vols) else 0.0
     vol_ratio = vol_last / vol_avg if vol_avg > 0 else 1.0
 
+    # Caution: upper range + low volume = potential chase / weak breakout risk
+    caution = ""
+    if range_pos > 0.70 and vol_ratio < 0.5:
+        caution = "upper-range low-vol (avoid chase)"
+    elif range_pos < 0.30 and vol_ratio < 0.5:
+        caution = "lower-range low-vol (wait for volume)"
+    elif vol_ratio < 0.3:
+        caution = "very low volume"
+
     return {
         "last": round(px, 2),
         "prior_range_high": round(prior_range_high, 2),
@@ -65,8 +92,10 @@ def snapshot(candles):
         "sma20": round(sma20, 2),
         "sma50": round(sma50, 2),
         "rsi14": round(rsi14, 1),
+        "atr14": round(atr14, 2),
         "trend": trend,
         "vol_ratio": round(vol_ratio, 2),
+        "caution": caution,
         "n": len(candles),
     }
 
@@ -74,13 +103,17 @@ def snapshot(candles):
 def caption(snap):
     if not snap:
         return "no chart"
-    return (
+    base = (
         f"last={snap.get('last')} "
         f"range={snap.get('prior_range_low')}-{snap.get('prior_range_high')} "
         f"pos={snap.get('range_pos_pct')}% "
         f"trend={snap.get('trend')} "
         f"rsi={snap.get('rsi14')} "
+        f"atr={snap.get('atr14')} "
         f"sma20={snap.get('sma20')} "
         f"volx={snap.get('vol_ratio')} "
         f"n={snap.get('n')}"
     )
+    if snap.get("caution"):
+        base += f" | CAUTION: {snap['caution']}"
+    return base

@@ -1,5 +1,5 @@
 """app.py"""
-import pathlib, base64
+import pathlib
 _r=pathlib.Path(__file__).resolve().parent
-_b="".join((_r/("_u%d.b64"%i)).read_text().strip() for i in range(4))
-exec(compile(base64.b64decode(_b).decode(),"app.py","exec"),globals())
+_src="".join((_r/("_c%d.py"%i)).read_text(encoding="utf-8") for i in range(3))
+exec(compile(_src, str(_r/"app.py"), "exec"), globals())

@@ -13,6 +13,7 @@ from market_context import build_market_context, apply_context_filter
 from structure_entry import plan_entry
 from regime import classify_regime, apply_regime_filter
 from squeeze_scanner import squeeze_handoff
+from chart_read import snapshot as chart_snapshot
 from algo_bot.config import (
     DELTA_BASE, K_PROFIT, K_STOP,
     MIN_BUY_PROBA, MIN_SELL_PROBA, MIN_EDGE,
@@ -159,6 +160,20 @@ def get_signal(symbol: str, resolution: str, days: int, max_holding: int):
     side, veto_reason = apply_context_filter(side, ctx, resolution)
 
     plan = None
+
+    # Chart caution filter (upper-range low-vol chase risk)
+    chart_snap = {}
+    try:
+        chart_snap = chart_snapshot(candles) or {}
+    except Exception:
+        pass
+    caution = chart_snap.get("caution") or ""
+    range_pos = chart_snap.get("range_pos_pct") or 50.0
+    rsi_c = chart_snap.get("rsi14") or 50.0
+    if side == "LONG" and ("upper-range" in caution or (range_pos > 72 and rsi_c > 68)):
+        veto_reason = (veto_reason + "; " if veto_reason else "") + f"chart caution: {caution or 'high range+RSI'}"
+        side = None
+
     if side:
         plan = plan_entry(side, high, low, close, live_price, cur_vol)
         if plan is None and squeeze_used:

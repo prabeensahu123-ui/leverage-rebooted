@@ -1,7 +1,7 @@
 """
 chart_read.py — richer chart snapshot helpers for the paper bot.
 Provides last price, prior range, position, simple trend, momentum, ATR and volume context.
-Enhanced with caution flags for high range position + low volume (chasing risk).
+Enhanced with symmetric caution flags for high/low range position + low volume (chasing risk on both sides).
 """
 
 import numpy as np
@@ -74,14 +74,24 @@ def snapshot(candles):
     vol_last = float(vols[-1]) if len(vols) else 0.0
     vol_ratio = vol_last / vol_avg if vol_avg > 0 else 1.0
 
-    # Caution: upper range + low volume = potential chase / weak breakout risk
+    # Caution flags — avoid chasing extremes on low volume
     caution = ""
+    long_caution = ""
+    short_caution = ""
     if range_pos > 0.70 and vol_ratio < 0.5:
         caution = "upper-range low-vol (avoid chase)"
+        long_caution = caution
     elif range_pos < 0.30 and vol_ratio < 0.5:
         caution = "lower-range low-vol (wait for volume)"
+        short_caution = caution
     elif vol_ratio < 0.3:
         caution = "very low volume"
+
+    # Extra RSI extremes
+    if range_pos > 0.72 and rsi14 > 68:
+        long_caution = long_caution or "high range + elevated RSI (chase risk)"
+    if range_pos < 0.28 and rsi14 < 32:
+        short_caution = short_caution or "low range + depressed RSI (chase risk)"
 
     return {
         "last": round(px, 2),
@@ -96,6 +106,8 @@ def snapshot(candles):
         "trend": trend,
         "vol_ratio": round(vol_ratio, 2),
         "caution": caution,
+        "long_caution": long_caution,
+        "short_caution": short_caution,
         "n": len(candles),
     }
 
@@ -116,4 +128,8 @@ def caption(snap):
     )
     if snap.get("caution"):
         base += f" | CAUTION: {snap['caution']}"
+    if snap.get("long_caution"):
+        base += f" | LONG: {snap['long_caution']}"
+    if snap.get("short_caution"):
+        base += f" | SHORT: {snap['short_caution']}"
     return base

@@ -161,17 +161,22 @@ def get_signal(symbol: str, resolution: str, days: int, max_holding: int):
 
     plan = None
 
-    # Chart caution filter (upper-range low-vol chase risk)
+    # Chart caution filter — symmetric for long (upper) and short (lower) low-vol chase risk
     chart_snap = {}
     try:
         chart_snap = chart_snapshot(candles) or {}
     except Exception:
         pass
-    caution = chart_snap.get("caution") or ""
+    long_caution = chart_snap.get("long_caution") or ""
+    short_caution = chart_snap.get("short_caution") or ""
     range_pos = chart_snap.get("range_pos_pct") or 50.0
     rsi_c = chart_snap.get("rsi14") or 50.0
-    if side == "LONG" and ("upper-range" in caution or (range_pos > 72 and rsi_c > 68)):
-        veto_reason = (veto_reason + "; " if veto_reason else "") + f"chart caution: {caution or 'high range+RSI'}"
+
+    if side == "LONG" and (long_caution or (range_pos > 72 and rsi_c > 68)):
+        veto_reason = (veto_reason + "; " if veto_reason else "") + f"chart caution: {long_caution or 'high range+RSI'}"
+        side = None
+    elif side == "SHORT" and (short_caution or (range_pos < 28 and rsi_c < 32)):
+        veto_reason = (veto_reason + "; " if veto_reason else "") + f"chart caution: {short_caution or 'low range+RSI'}"
         side = None
 
     if side:
@@ -234,6 +239,7 @@ def get_signal(symbol: str, resolution: str, days: int, max_holding: int):
         "support": plan["support"] if plan else None,
         "resistance": plan["resistance"] if plan else None,
         "model_source": "disk" if from_disk else "live_fit",
+        "chart_snap": chart_snap,
     }
     if side is None or plan is None:
         return base

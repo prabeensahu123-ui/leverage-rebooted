@@ -28,6 +28,12 @@ except Exception as e:
     REGIME_BIAS = {}
     st.error("funding_confluence load failed: %s" % e)
 
+try:
+    from chart_read import snapshot as chart_snapshot, caption as chart_caption
+except Exception:
+    chart_snapshot = None
+    chart_caption = None
+
 if "symbol" not in st.session_state:
     st.session_state.symbol = "BTCUSD"
 if "conf_result" not in st.session_state:
@@ -118,6 +124,15 @@ st.caption(
 if funding_pct is not None and funding_regime:
     reg = funding_regime(funding_pct)
     st.info("**%s** — %s" % (reg.replace("_", " "), REGIME_BIAS.get(reg, "")))
+
+# Live chart snapshot
+if h1 and chart_snapshot:
+    snap = chart_snapshot(h1)
+    if snap:
+        st.markdown("#### Chart Snapshot (1h)")
+        st.code(chart_caption(snap) if chart_caption else str(snap), language=None)
+        if snap.get("long_caution") or snap.get("short_caution") or snap.get("caution"):
+            st.warning("Caution active — see flags above")
 
 st.markdown("---")
 st.subheader("6-Point Confluence Scorer")

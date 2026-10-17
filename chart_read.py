@@ -3,6 +3,7 @@ chart_read.py
 BTC / multi-asset 1h chart snapshot for context and caution filters.
 Computes multi-lookback range position, SMAs/EMAs, RSI, ATR, volume ratio/trend,
 trend bias, volume confirmation, ADX/regime context, and improved symmetric chase-risk caution flags.
+Adds low-ATR compression awareness for better filtering in quiet markets.
 """
 
 from __future__ import annotations
@@ -138,8 +139,9 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
     weak_trend = adx_val < 20.0 if adx_val else False
+    low_atr = atr_pct < 0.40  # quiet market threshold
 
-    # Improved caution flags - location + weak participation or weak trend
+    # Improved caution flags - location + weak participation or weak trend; stronger in compression
     long_caution = ""
     short_caution = ""
     near_24h_high = pos24 > 85
@@ -148,17 +150,18 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     upper_extreme = pos48 > 70 or near_24h_high
     lower_extreme = pos48 < 30 or near_24h_low
 
-    if upper_extreme and (vol_ratio < 0.55 or weak_trend):
-        long_caution = "upper/near-high range + low-vol or weak ADX (avoid chase)"
+    if upper_extreme and (vol_ratio < 0.55 or weak_trend or low_atr):
+        long_caution = "upper/near-high range + low-vol/weak ADX or low-ATR (avoid chase)"
     elif pos48 > 75 and rsi14 > 62 and not vol_confirm:
         long_caution = "elevated range_pos + RSI without volume confirm"
-    if lower_extreme and (vol_ratio < 0.55 or weak_trend):
-        short_caution = "lower/near-low range + low-vol or weak ADX (avoid chase)"
+    if lower_extreme and (vol_ratio < 0.55 or weak_trend or low_atr):
+        short_caution = "lower/near-low range + low-vol/weak ADX or low-ATR (avoid chase)"
     elif pos48 < 25 and rsi14 < 38 and not vol_confirm:
         short_caution = "depressed range_pos + RSI without volume confirm"
 
     vol_weak = vol_ratio < 0.45
     range_width_pct = ((hi48 - lo48) / px * 100.0) if px > 0 else 0.0
+    compression_flag = regime_name == "COMPRESSION" or low_atr
 
     return {
         "price": round(px, 1),
@@ -186,10 +189,12 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         "near_24h_low": near_24h_low,
         "long_caution": long_caution,
         "short_caution": short_caution,
-        "caution": bool(long_caution or short_caution or vol_weak),
+        "caution": bool(long_caution or short_caution or vol_weak or compression_flag),
         "adx": round(adx_val, 1),
         "regime": regime_name,
         "regime_info": regime_info,
+        "low_atr": low_atr,
+        "compression_flag": compression_flag,
     }
 
 
@@ -204,13 +209,15 @@ def caption(snap: Dict[str, Any]) -> str:
         f"{'upper' if snap['range_pos_48h']>65 else 'lower' if snap['range_pos_48h']<35 else 'mid'} range, width {snap.get('range_width_pct',0):.1f}%)",
         f"24h pos ~{snap['range_pos_24h']:.1f}% / 7d pos ~{snap['range_pos_7d']:.1f}%",
         f"Trend: **{snap['trend']}** (SMA20={snap['sma20']:.0f} SMA50={snap['sma50']:.0f} | EMA20={snap.get('ema20',0):.0f} | dist SMA20 {snap.get('dist_sma20_pct',0):+.1f}%)",
-        f"RSI(14): **{snap['rsi14']:.1f}**  ATR(14): ~{snap['atr14']:.0f} ({snap.get('atr_pct',0):.2f}%)",
+        f"RSI(14): **{snap['rsi14']:.1f}**  ATR(14): ~{snap['atr14']:.0f} ({snap.get('atr_pct',0):.2f}%)"
+        + (" [LOW ATR]" if snap.get("low_atr") else ""),
         f"Vol ratio: **{snap['vol_ratio']:.2f}** ({snap['vol_trend']}, {snap.get('vol_strength','')})"
         + (" -> VOL WEAK" if snap.get("vol_weak") else "")
         + (" + CONFIRM" if snap.get("vol_confirm") else ""),
     ]
     if snap.get("adx") or snap.get("regime"):
-        lines.append(f"Regime: **{snap.get('regime','?')}**  ADX: {snap.get('adx',0):.1f}")
+        lines.append(f"Regime: **{snap.get('regime','?')}**  ADX: {snap.get('adx',0):.1f}"
+                     + (" [COMPRESSION]" if snap.get("compression_flag") else ""))
     if snap.get("long_caution"):
         lines.append(f"LONG caution: {snap['long_caution']}")
     if snap.get("short_caution"):

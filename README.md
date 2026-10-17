@@ -33,16 +33,17 @@ python -m algo_bot.bot once
 - Added EMAs, ATR%, range width, near_24h_high/low, dist_sma20_pct, and optional ADX/regime (from regime.py) for richer context.
 - Caution logic tightened: requires location extreme *and* weak participation or weak trend strength.
 
-### Latest live snapshot (2026-10-15 ~22:40 UTC / ~04:10 IST next day)
+### Latest live snapshot (2026-10-18 ~04:07 IST / ~22:37 UTC prev)
 
-- Last ~$82,426
-- 48h range: $79,737 – $84,113.5 (pos **61.4%** — mid-upper range)
-- 24h pos ~93.6% (near highs) / 7d pos ~58.7%
-- Trend: **mixed** (px > SMA20 but SMA20 < SMA50; EMAs similar)
-- RSI(14): **61.6** (mildly elevated)
-- ATR(14): ~601 (~0.73%)
-- Vol ratio: **0.34** (falling, weak) → VOL WEAK, no strong chase caution yet but near 24h high + low vol suggests wait for volume confirmation
-- Funding: mild positive (~0.0044%)
-- Context: consolidating after dip/recovery toward upper 24h; mixed trend + low volume — prefer pullback to SMA20 or volume-backed break of highs before chasing. Shorts not strongly favoured.
+- Last ~$81,294.5
+- 48h range: $80,767.0 – $82,900.5 (pos **24.7%** — lower range, width 2.6%)
+- 24h pos ~51.8% / 7d pos ~34.0%
+- Trend: **bearish** (SMA20=81,480 SMA50=81,727 | EMA20=81,460 | dist SMA20 -0.2%)
+- RSI(14): **39.2**  ATR(14): ~227 (~0.28%)
+- Vol ratio: **0.64** (falling, normal)
+- Regime: **COMPRESSION**  ADX: 18.1
+- SHORT caution: lower/near-low range + low-vol or weak ADX (avoid chase)
+- Funding: mild-to-elevated positive (~0.29% if scaled)
+- Context: low-volatility compression in lower half of 48h range; weak ADX, mild RSI oversold lean — prefer waiting for volume expansion or break of range extremes rather than chasing shorts. Longs not favoured without structure reclaim.
 
 Educational only — not financial advice.

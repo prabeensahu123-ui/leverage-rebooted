@@ -161,7 +161,7 @@ def get_signal(symbol: str, resolution: str, days: int, max_holding: int):
 
     plan = None
 
-    # Chart caution filter — symmetric for long (upper) and short (lower) low-vol chase risk
+    # Chart caution filter — symmetric for long (upper) and short (lower) low-vol chase risk + range-bound
     chart_snap = {}
     try:
         chart_snap = chart_snapshot(candles) or {}
@@ -171,12 +171,13 @@ def get_signal(symbol: str, resolution: str, days: int, max_holding: int):
     short_caution = chart_snap.get("short_caution") or ""
     range_pos = chart_snap.get("range_pos_pct") or 50.0
     rsi_c = chart_snap.get("rsi14") or 50.0
+    range_bound = chart_snap.get("range_bound", False)
 
-    if side == "LONG" and (long_caution or (range_pos > 72 and rsi_c > 68)):
-        veto_reason = (veto_reason + "; " if veto_reason else "") + f"chart caution: {long_caution or 'high range+RSI'}"
+    if side == "LONG" and (long_caution or (range_pos > 72 and rsi_c > 68) or (range_bound and 35 < range_pos < 65)):
+        veto_reason = (veto_reason + "; " if veto_reason else "") + f"chart caution: {long_caution or 'high range+RSI or range-bound mid'}"
         side = None
-    elif side == "SHORT" and (short_caution or (range_pos < 28 and rsi_c < 32)):
-        veto_reason = (veto_reason + "; " if veto_reason else "") + f"chart caution: {short_caution or 'low range+RSI'}"
+    elif side == "SHORT" and (short_caution or (range_pos < 28 and rsi_c < 32) or (range_bound and 35 < range_pos < 65)):
+        veto_reason = (veto_reason + "; " if veto_reason else "") + f"chart caution: {short_caution or 'low range+RSI or range-bound mid'}"
         side = None
 
     if side:

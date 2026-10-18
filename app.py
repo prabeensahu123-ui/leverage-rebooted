@@ -1,4 +1,4 @@
-"""Leverage Signal — core + Funding Confluence Matrix scorer + live chart."""
+"""Leverage Signal — core + Funding Confluence Matrix + live chart + paper trading."""
 import sys, os
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
@@ -8,6 +8,7 @@ import streamlit as st
 import requests
 import numpy as np
 import time
+import json
 from datetime import datetime, timezone, timedelta
 
 try:
@@ -24,6 +25,8 @@ def now_ist():
 DELTA = "https://api.india.delta.exchange"
 ASSETS = ["BTCUSD", "ETHUSD", "SOLUSD", "XAUTUSD", "PAXGUSD"]
 LABELS = {"BTCUSD": "BTC", "ETHUSD": "ETH", "SOLUSD": "SOL", "XAUTUSD": "XAUT", "PAXGUSD": "PAXG"}
+STATE_FILE = "algo_bot/state.json"
+TRADE_LOG = "algo_bot/trades.csv"
 
 try:
     from funding_confluence import run_confluence, position_size, funding_regime, REGIME_BIAS
@@ -44,9 +47,11 @@ if "symbol" not in st.session_state:
     st.session_state.symbol = "BTCUSD"
 if "conf_result" not in st.session_state:
     st.session_state.conf_result = None
+if "paper_msg" not in st.session_state:
+    st.session_state.paper_msg = ""
 
 st.markdown("### Leverage Signal")
-st.caption("%s IST · Funding Confluence Matrix v2" % now_ist().strftime("%Y-%m-%d %H:%M:%S"))
+st.caption("%s IST · Funding Confluence Matrix v2 + Paper Bot" % now_ist().strftime("%Y-%m-%d %H:%M:%S"))
 
 cols = st.columns(len(ASSETS))
 for col, sym in zip(cols, ASSETS):
@@ -78,6 +83,21 @@ def fetch_candles(s, res, days):
         return list(reversed(rows)) if isinstance(rows, list) else []
     except Exception:
         return []
+
+def load_paper_state():
+    if not os.path.exists(STATE_FILE):
+        return {"open_trades": [], "history": []}
+    try:
+        with open(STATE_FILE) as f:
+            stt = json.load(f)
+        ot = stt.get("open_trades", [])
+        if isinstance(ot, dict):
+            ot = list(ot.values()) if ot else []
+        stt["open_trades"] = ot
+        stt.setdefault("history", [])
+        return stt
+    except Exception:
+        return {"open_trades": [], "history": []}
 
 ticker = fetch_ticker(symbol)
 price = float(ticker.get("close", ticker.get("mark_price", 0)) or 0)
@@ -159,6 +179,72 @@ if h1 and chart_snapshot:
         st.code(chart_caption(snap) if chart_caption else str(snap), language=None)
         if snap.get("long_caution") or snap.get("short_caution") or snap.get("caution"):
             st.warning("Caution active — see flags above")
+
+# ---- Paper trading panel ----
+st.markdown("---")
+st.subheader("Background Paper Trading")
+st.caption(
+    "Model + technical filters (chart caution, regime, structure). "
+    "GitHub Actions runs every 30 min. Telegram alerts if secrets are set."
+)
+paper = load_paper_state()
+open_trades = paper.get("open_trades", [])
+hist = paper.get("history", [])
+
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("Open", len(open_trades))
+with c2:
+    wins = sum(1 for h in hist if h.get("win"))
+    st.metric("Closed", len(hist))
+with c3:
+    wr = ("%.0f%%" % (100.0 * wins / len(hist))) if hist else "—"
+    st.metric("Win rate", wr)
+
+if open_trades:
+    st.markdown("**Open paper trades**")
+    rows = []
+    for t in open_trades:
+        rows.append({
+            "Asset": LABELS.get(t.get("symbol", ""), t.get("symbol")),
+            "TF": t.get("tf"),
+            "Side": t.get("side"),
+            "Entry": t.get("entry"),
+            "SL": t.get("stop_loss"),
+            "TP": t.get("take_profit"),
+            "Style": t.get("entry_style") or "-",
+        })
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+else:
+    st.write("No open paper trades.")
+
+if hist:
+    with st.expander("Recent closed trades"):
+        recent = list(reversed(hist[-10:]))
+        st.dataframe(
+            [{
+                "Asset": LABELS.get(h.get("symbol", ""), h.get("symbol")),
+                "TF": h.get("tf") or h.get("timeframe"),
+                "Side": h.get("side"),
+                "PnL %": h.get("pnl_pct"),
+                "Reason": h.get("exit_reason"),
+                "Win": h.get("win"),
+            } for h in recent],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+if st.button("Run paper check now", use_container_width=True):
+    try:
+        from algo_bot.bot import run_once
+        run_once()
+        st.session_state.paper_msg = "Paper check finished at %s IST" % now_ist().strftime("%H:%M:%S")
+    except Exception as e:
+        st.session_state.paper_msg = "Paper check failed: %s" % e
+    st.rerun()
+
+if st.session_state.paper_msg:
+    st.info(st.session_state.paper_msg)
 
 st.markdown("---")
 st.subheader("6-Point Confluence Scorer")
@@ -262,9 +348,9 @@ if sz_go and position_size:
         st.error(ps["error"])
     else:
         st.write("Risk USD: **%.2f** (after size mult)" % ps["risk_usd"])
-        st.write("Stop distance: **%.3f%%**" % ps["stop_dist_pct"])
+        st.write("Stop distance: **%.3f%%" % ps["stop_dist_pct"])
         st.write("Notional: **$%s** · Margin: **$%s**" % ("{:,.0f}".format(ps["notional"]), "{:,.0f}".format(ps["margin"])))
-        st.write("Approx liq distance: **%.1f%%**" % ps["liq_dist_approx_pct"])
+        st.write("Approx liq distance: **%.1f%%" % ps["liq_dist_approx_pct"])
         if ps.get("warning"):
             st.warning(ps["warning"])
         else:

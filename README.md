@@ -34,17 +34,16 @@ python -m algo_bot.bot once
 - Added EMAs, ATR%, range width, near_24h_high/low, dist_sma20_pct, range_bound flag, and optional ADX/regime (from regime.py) for richer context.
 - Caution logic tightened: requires location extreme *and* weak participation or weak trend strength or range-bound conditions.
 
-### Latest live snapshot (2026-10-19 ~04:00 IST / ~22:30 UTC)
+### Latest live snapshot (2026-10-20 ~04:00 IST / ~22:30 UTC)
 
-- Last ~$81,575.0
-- 48h range: $80,647.5 – $82,269.0 (pos **57.2%** — mid range, width 2.0%) [RANGE-BOUND]
-- 24h pos ~57.2% / 7d pos ~40.1%
-- Trend: **mixed** (SMA20=81,508 SMA50=81,513 | EMA20=81,378 | dist SMA20 +0.1%)
-- RSI(14): **47.7**  ATR(14): ~338 (~0.41%)
-- Vol ratio: **1.15** (rising, normal)
-- Regime: **TREND**  ADX: 20.7 [COMPRESSION/RANGE]
-- LONG/SHORT caution: tight range-bound mid-position — wait for break or volume expansion
-- Funding: mild positive (~0.33% scaled)
-- Context: tight 2% consolidation near key 50-day SMA support (~81.4k) and 20-day resistance zone (~82.6k). Neutral RSI, borderline ADX, mild positive funding. Prefer waiting for volume-confirmed break of 80.6k or 82.3k rather than mid-range entries. Decision point ahead of Fed (28 Oct).
+- Last ~$82,065
+- 48h range: ~$80,648 – $83,134 (pos **~57.5%** — mid range, width ~3.0%)
+- 24h pos ~28% / 7d pos ~53%
+- Trend: **mixed** (SMA20~82,311 SMA50~81,896 | dist SMA20 -0.3%)
+- RSI(14): **~33.6**  ATR(14): ~421 (~0.51%)
+- Vol ratio: **~0.27** (weak)
+- Funding: mild positive (+0.010% / 8h)
+- Liq clusters: balanced, slightly more long-fuel below near ~81.6-81.9k
+- Context: Pulling lower in the 80.6-83.1k range on low volume and oversold RSI. Mild positive funding. Prefer waiting for volume-confirmed break of ~80.6k (support) or ~83.1k (resistance). Short-term bounce potential if support holds, but weak participation. Decision point ahead of Fed (28 Oct).
 
 Educational only — not financial advice.

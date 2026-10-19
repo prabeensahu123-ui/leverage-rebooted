@@ -3,7 +3,7 @@ chart_read.py
 BTC / multi-asset 1h chart snapshot for context and caution filters.
 Computes multi-lookback range position, SMAs/EMAs, RSI, ATR, volume ratio/trend,
 trend bias, volume confirmation, ADX/regime context, and improved symmetric chase-risk caution flags.
-Adds low-ATR compression awareness and range-bound detection for better filtering in quiet/consolidating markets.
+Adds low-ATR compression awareness, range-bound detection, and low-RSI bounce awareness for better filtering in quiet/consolidating markets.
 """
 
 from __future__ import annotations
@@ -170,6 +170,11 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         if not short_caution:
             short_caution = "tight range-bound mid-position — wait for break or volume expansion"
 
+    # Low RSI + weak vol bounce awareness (avoid aggressive shorts in oversold quiet conditions)
+    bounce_potential = rsi14 < 35 and vol_ratio < 0.6 and pos48 < 60
+    if bounce_potential and not short_caution:
+        short_caution = "low RSI + weak vol near lower-mid range — bounce risk, avoid chase shorts"
+
     vol_weak = vol_ratio < 0.45
     compression_flag = regime_name == "COMPRESSION" or low_atr or range_bound
 
@@ -206,6 +211,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         "low_atr": low_atr,
         "compression_flag": compression_flag,
         "range_bound": range_bound,
+        "bounce_potential": bounce_potential,
     }
 
 
@@ -222,7 +228,8 @@ def caption(snap: Dict[str, Any]) -> str:
         f"24h pos ~{snap['range_pos_24h']:.1f}% / 7d pos ~{snap['range_pos_7d']:.1f}%",
         f"Trend: **{snap['trend']}** (SMA20={snap['sma20']:.0f} SMA50={snap['sma50']:.0f} | EMA20={snap.get('ema20',0):.0f} | dist SMA20 {snap.get('dist_sma20_pct',0):+.1f}%)",
         f"RSI(14): **{snap['rsi14']:.1f}**  ATR(14): ~{snap['atr14']:.0f} ({snap.get('atr_pct',0):.2f}%)"
-        + (" [LOW ATR]" if snap.get("low_atr") else ""),
+        + (" [LOW ATR]" if snap.get("low_atr") else "")
+        + (" [BOUNCE POTENTIAL]" if snap.get("bounce_potential") else ""),
         f"Vol ratio: **{snap['vol_ratio']:.2f}** ({snap['vol_trend']}, {snap.get('vol_strength','')})"
         + (" -> VOL WEAK" if snap.get("vol_weak") else "")
         + (" + CONFIRM" if snap.get("vol_confirm") else ""),

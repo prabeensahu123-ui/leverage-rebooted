@@ -151,23 +151,32 @@ if funding_pct is not None and funding_regime:
     reg = funding_regime(funding_pct)
     st.info("**%s** — %s" % (reg.replace("_", " "), REGIME_BIAS.get(reg, "")))
 
-# Live chart
+# Live chart with SMA overlays
 if h1 and HAS_PLOTLY and len(h1) > 10:
     st.markdown("#### 1h Chart")
+    closes_arr = np.array([c["close"] for c in h1], float)
+    times = [datetime.fromtimestamp(c.get("time", 0), tz=timezone.utc) for c in h1]
     fig = go.Figure(data=[go.Candlestick(
-        x=[datetime.fromtimestamp(c.get("time", 0), tz=timezone.utc) for c in h1],
+        x=times,
         open=[c.get("open", c["close"]) for c in h1],
         high=[c["high"] for c in h1],
         low=[c["low"] for c in h1],
-        close=[c["close"] for c in h1],
+        close=closes_arr,
         name=name,
     )])
+    # Add SMA20 and SMA50 if enough data
+    if len(closes_arr) >= 20:
+        sma20 = np.convolve(closes_arr, np.ones(20)/20, mode='valid')
+        fig.add_trace(go.Scatter(x=times[-len(sma20):], y=sma20, mode='lines', name='SMA20', line=dict(color='yellow', width=1)))
+    if len(closes_arr) >= 50:
+        sma50 = np.convolve(closes_arr, np.ones(50)/50, mode='valid')
+        fig.add_trace(go.Scatter(x=times[-len(sma50):], y=sma50, mode='lines', name='SMA50', line=dict(color='cyan', width=1)))
     fig.update_layout(
         height=420,
         margin=dict(l=10, r=10, t=30, b=10),
         xaxis_rangeslider_visible=False,
         template="plotly_dark",
-        title=f"{name} 1h · last {len(h1)} bars",
+        title=f"{name} 1h · last {len(h1)} bars + SMAs",
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -179,6 +188,8 @@ if h1 and chart_snapshot:
         st.code(chart_caption(snap) if chart_caption else str(snap), language=None)
         if snap.get("long_caution") or snap.get("short_caution") or snap.get("caution"):
             st.warning("Caution active — see flags above")
+        if snap.get("bounce_potential"):
+            st.info("Bounce potential flagged (low RSI + weak vol)")
 
 # ---- Paper trading panel ----
 st.markdown("---")

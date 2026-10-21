@@ -28,6 +28,13 @@ LABELS = {"BTCUSD": "BTC", "ETHUSD": "ETH", "SOLUSD": "SOL", "XAUTUSD": "XAUT", 
 STATE_FILE = "algo_bot/state.json"
 TRADE_LOG = "algo_bot/trades.csv"
 
+# Confluence data window options (price change % + OI window match this TF)
+CONF_TFS = {
+    "15m": {"resolution": "15m", "days": 5, "label": "15 Minutes"},
+    "1h": {"resolution": "1h", "days": 7, "label": "1 Hour"},
+    "4h": {"resolution": "4h", "days": 30, "label": "4 Hours"},
+}
+
 try:
     from funding_confluence import run_confluence, position_size, funding_regime, REGIME_BIAS
 except Exception as e:
@@ -49,6 +56,8 @@ if "conf_result" not in st.session_state:
     st.session_state.conf_result = None
 if "paper_msg" not in st.session_state:
     st.session_state.paper_msg = ""
+if "conf_tf" not in st.session_state:
+    st.session_state.conf_tf = "1h"
 
 st.markdown("### Leverage Signal")
 st.caption("%s IST · Funding Confluence Matrix v2 + Paper Bot" % now_ist().strftime("%Y-%m-%d %H:%M:%S"))
@@ -99,6 +108,28 @@ def load_paper_state():
     except Exception:
         return {"open_trades": [], "history": []}
 
+def rsi_from_closes(closes, period=14):
+    if closes is None or len(closes) < period + 1:
+        return None
+    c = np.asarray(closes, dtype=float)
+    d = np.diff(c)
+    up = np.where(d > 0, d, 0.0)
+    dn = np.where(d < 0, -d, 0.0)
+    ru = np.mean(up[-period:]) if len(up) >= period else 0.0
+    rd = np.mean(dn[-period:]) if len(dn) >= period else 1e-9
+    rs = ru / (rd if rd > 0 else 1e-9)
+    return float(100 - (100 / (1 + rs)))
+
+def tf_price_change(candles):
+    """One-bar % change on selected TF (last close vs previous close)."""
+    if not candles or len(candles) < 2:
+        return None
+    a = float(candles[-2].get("close") or 0)
+    b = float(candles[-1].get("close") or 0)
+    if a <= 0:
+        return None
+    return float((b - a) / a * 100.0)
+
 ticker = fetch_ticker(symbol)
 price = float(ticker.get("close", ticker.get("mark_price", 0)) or 0)
 chg24 = float(ticker.get("price_change_24h", 0) or 0) * 100
@@ -108,6 +139,7 @@ funding_pct = None
 if funding_raw is not None:
     try:
         fr = float(funding_raw)
+        # Delta often returns decimal rate; Binance-style display is percent
         funding_pct = fr * 100.0 if abs(fr) < 0.05 else fr
     except Exception:
         pass
@@ -118,33 +150,26 @@ if price > 0:
 else:
     st.warning("Price unavailable")
 
+# Chart always 1h for overview
 h1 = fetch_candles(symbol, "1h", 7)
 chg1 = chg4 = None
-rsi_est = None
+rsi_1h = None
 if h1 and len(h1) >= 5:
     c = np.array([x["close"] for x in h1], float)
     if c[-2] > 0:
         chg1 = float((c[-1] - c[-2]) / c[-2] * 100)
-    if c[-5] > 0:
+    if len(c) >= 5 and c[-5] > 0:
         chg4 = float((c[-1] - c[-5]) / c[-5] * 100)
-    if len(c) >= 16:
-        d = np.diff(c)
-        up = np.where(d > 0, d, 0.0)
-        dn = np.where(d < 0, -d, 0.0)
-        ru = np.mean(up[-14:]) if len(up) >= 14 else 0
-        rd = np.mean(dn[-14:]) if len(dn) >= 14 else 1e-9
-        rs = ru / (rd if rd > 0 else 1e-9)
-        rsi_est = 100 - (100 / (1 + rs))
+    rsi_1h = rsi_from_closes(c)
 
-auto_chg = chg1 if chg1 is not None else chg24
 st.caption(
-    "Auto — 1h: %s · 4h: %s · 24h: %.2f · Funding: %s · RSI~: %s"
+    "Overview — 1h: %s · ~4h: %s · 24h: %.2f · Funding: %s · RSI(1h)~: %s"
     % (
         ("%.2f" % chg1) if chg1 is not None else "—",
         ("%.2f" % chg4) if chg4 is not None else "—",
         chg24,
         ("%.4f%%" % funding_pct) if funding_pct is not None else "—",
-        ("%.1f" % rsi_est) if rsi_est is not None else "—",
+        ("%.1f" % rsi_1h) if rsi_1h is not None else "—",
     )
 )
 if funding_pct is not None and funding_regime:
@@ -164,13 +189,18 @@ if h1 and HAS_PLOTLY and len(h1) > 10:
         close=closes_arr,
         name=name,
     )])
-    # Add SMA20 and SMA50 if enough data
     if len(closes_arr) >= 20:
-        sma20 = np.convolve(closes_arr, np.ones(20)/20, mode='valid')
-        fig.add_trace(go.Scatter(x=times[-len(sma20):], y=sma20, mode='lines', name='SMA20', line=dict(color='yellow', width=1)))
+        sma20 = np.convolve(closes_arr, np.ones(20) / 20, mode="valid")
+        fig.add_trace(go.Scatter(
+            x=times[-len(sma20):], y=sma20, mode="lines", name="SMA20",
+            line=dict(color="yellow", width=1),
+        ))
     if len(closes_arr) >= 50:
-        sma50 = np.convolve(closes_arr, np.ones(50)/50, mode='valid')
-        fig.add_trace(go.Scatter(x=times[-len(sma50):], y=sma50, mode='lines', name='SMA50', line=dict(color='cyan', width=1)))
+        sma50 = np.convolve(closes_arr, np.ones(50) / 50, mode="valid")
+        fig.add_trace(go.Scatter(
+            x=times[-len(sma50):], y=sma50, mode="lines", name="SMA50",
+            line=dict(color="cyan", width=1),
+        ))
     fig.update_layout(
         height=420,
         margin=dict(l=10, r=10, t=30, b=10),
@@ -180,7 +210,6 @@ if h1 and HAS_PLOTLY and len(h1) > 10:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# Live chart snapshot
 if h1 and chart_snapshot:
     snap = chart_snapshot(h1)
     if snap:
@@ -257,54 +286,135 @@ if st.button("Run paper check now", use_container_width=True):
 if st.session_state.paper_msg:
     st.info(st.session_state.paper_msg)
 
+# ---- 6-Point Confluence Scorer ----
 st.markdown("---")
 st.subheader("6-Point Confluence Scorer")
-st.caption("From BTC Funding Matrix v2. Count how many conditions met — not any single signal.")
+st.caption(
+    "From BTC Funding Matrix v2. Pick the data window (15m / 1h / 4h) — "
+    "price change % and OI change % should match that same window."
+)
+
+# TF selector OUTSIDE form so changing it refreshes auto price/RSI immediately
+tf_choice = st.radio(
+    "Data window (price change + OI window)",
+    options=list(CONF_TFS.keys()),
+    index=list(CONF_TFS.keys()).index(st.session_state.conf_tf)
+    if st.session_state.conf_tf in CONF_TFS else 1,
+    horizontal=True,
+    key="conf_tf_radio",
+    help="Select 15m, 1h or 4h. Auto price change and RSI load from this timeframe. "
+         "Enter OI change % for the same window from CoinGlass.",
+)
+if tf_choice != st.session_state.conf_tf:
+    st.session_state.conf_tf = tf_choice
+    st.rerun()
+
+conf_tf = st.session_state.conf_tf
+tf_cfg = CONF_TFS[conf_tf]
+tf_candles = fetch_candles(symbol, tf_cfg["resolution"], tf_cfg["days"])
+auto_price_chg = tf_price_change(tf_candles)
+tf_closes = [float(x["close"]) for x in tf_candles] if tf_candles else []
+auto_rsi = rsi_from_closes(tf_closes) if tf_closes else rsi_1h
+
+st.info(
+    "Selected window: **%s** · Auto price change (1 bar): **%s** · RSI(%s)~: **%s**"
+    % (
+        tf_cfg["label"],
+        ("%+.2f%%" % auto_price_chg) if auto_price_chg is not None else "—",
+        conf_tf,
+        ("%.1f" % auto_rsi) if auto_rsi is not None else "—",
+    )
+)
 
 with st.form("confluence_form"):
+    st.markdown("##### Core inputs")
     c1, c2 = st.columns(2)
     with c1:
         f_fund = st.number_input(
             "Funding % (8h)",
             value=float(funding_pct) if funding_pct is not None else 0.0,
             step=0.001, format="%.4f",
-            help="Binance-style 8h. Extreme long squeeze risk if sustained > +0.05%",
+            help="Binance-style 8h rate in percent. Example mild positive ≈ +0.01 to +0.03. "
+                 "Extreme long-squeeze risk if sustained > +0.05.",
         )
         f_rsi = st.number_input(
-            "RSI (14)",
-            value=float(rsi_est) if rsi_est is not None else 50.0,
+            "RSI (14) — from selected TF",
+            value=float(auto_rsi) if auto_rsi is not None else 50.0,
             step=0.1, format="%.1f",
         )
         f_share = st.number_input(
             "Long share % (24h volume)",
             value=50.0, step=1.0, format="%.1f",
-            help="From CoinGlass / exchange long-short ratio. Optional but important.",
+            help="From CoinGlass / exchange long-short ratio.",
         )
         f_price_chg = st.number_input(
-            "Price change % (match OI window)",
-            value=float(auto_chg) if auto_chg is not None else 0.0,
-            step=0.1, format="%.2f",
+            "Price change %% (%s window)" % conf_tf,
+            value=float(auto_price_chg) if auto_price_chg is not None else 0.0,
+            step=0.01, format="%.2f",
+            help="Auto-filled from last closed %s candle. Override if needed. OI change must use same window." % conf_tf,
         )
     with c2:
-        f_oi_chg = st.number_input("OI change % (same window)", value=0.0, step=0.1, format="%.2f")
-        f_above = st.number_input(
-            "Liq cluster ABOVE (USD or size)",
-            value=0.0, step=1000.0, format="%.0f",
-            help="Short-liq pile size above price",
-        )
-        f_below = st.number_input(
-            "Liq cluster BELOW (USD or size)",
-            value=0.0, step=1000.0, format="%.0f",
-            help="Long-liq pile size below price",
+        f_oi_chg = st.number_input(
+            "OI change %% (same %s window)" % conf_tf,
+            value=0.0, step=0.1, format="%.2f",
+            help="Open interest %% change for the SAME window as price change (%s). From CoinGlass." % conf_tf,
         )
         f_pa_long = st.checkbox("PA confirm LONG (support held / reclaim)", value=False)
         f_pa_short = st.checkbox("PA confirm SHORT (resistance rejection)", value=False)
+
+    st.markdown("##### Liquidation map (split: nearest point + amount)")
+    st.caption(
+        "Nearest liquidation **price** above/below current price, and the **size** of that cluster. "
+        "Scoring still uses amounts (above vs below). Points help stop placement."
+    )
+    la, lb = st.columns(2)
+    with la:
+        st.markdown("**ABOVE current price** (short-liq fuel)")
+        f_liq_pt_above = st.number_input(
+            "Nearest liq point ABOVE (price)",
+            value=0.0, step=1.0, format="%.1f",
+            help="Closest liquidation cluster price level above mark/last.",
+        )
+        f_liq_amt_above = st.number_input(
+            "Liq amount ABOVE (USD or size)",
+            value=0.0, step=1000.0, format="%.0f",
+            help="Notional size of the short-liq pile above price.",
+        )
+    with lb:
+        st.markdown("**BELOW current price** (long-liq fuel)")
+        f_liq_pt_below = st.number_input(
+            "Nearest liq point BELOW (price)",
+            value=0.0, step=1.0, format="%.1f",
+            help="Closest liquidation cluster price level below mark/last.",
+        )
+        f_liq_amt_below = st.number_input(
+            "Liq amount BELOW (USD or size)",
+            value=0.0, step=1000.0, format="%.0f",
+            help="Notional size of the long-liq pile below price.",
+        )
+
+    st.markdown("##### Cumulative leverage (accounts)")
+    st.caption("From CoinGlass / exchange: aggregate leverage of longs vs shorts.")
+    cl1, cl2 = st.columns(2)
+    with cl1:
+        f_cum_long_lev = st.number_input(
+            "Cumulative LONG leverage (x)",
+            value=0.0, step=0.1, format="%.2f",
+            help="Average / aggregate leverage of open longs.",
+        )
+    with cl2:
+        f_cum_short_lev = st.number_input(
+            "Cumulative SHORT leverage (x)",
+            value=0.0, step=0.1, format="%.2f",
+            help="Average / aggregate leverage of open shorts.",
+        )
+
     go = st.form_submit_button("Score confluence", use_container_width=True)
 
 if go and run_confluence:
     share = f_share if f_share > 0 else None
-    above = f_above if f_above > 0 else None
-    below = f_below if f_below > 0 else None
+    above = f_liq_amt_above if f_liq_amt_above > 0 else None
+    below = f_liq_amt_below if f_liq_amt_below > 0 else None
     res = run_confluence(
         funding_pct=f_fund,
         rsi=f_rsi,
@@ -316,12 +426,28 @@ if go and run_confluence:
         pa_long=f_pa_long,
         pa_short=f_pa_short,
     )
+    # Attach context the scorer does not score (for display / journal)
+    res["data_window"] = conf_tf
+    res["liq_point_above"] = f_liq_pt_above if f_liq_pt_above > 0 else None
+    res["liq_point_below"] = f_liq_pt_below if f_liq_pt_below > 0 else None
+    res["liq_amt_above"] = above
+    res["liq_amt_below"] = below
+    res["cum_long_leverage"] = f_cum_long_lev if f_cum_long_lev > 0 else None
+    res["cum_short_leverage"] = f_cum_short_lev if f_cum_short_lev > 0 else None
+    if price > 0:
+        if f_liq_pt_above > 0:
+            res["dist_above_pct"] = round((f_liq_pt_above - price) / price * 100.0, 3)
+        if f_liq_pt_below > 0:
+            res["dist_below_pct"] = round((price - f_liq_pt_below) / price * 100.0, 3)
     st.session_state.conf_result = res
 
 if st.session_state.conf_result:
     r = st.session_state.conf_result
     st.markdown("#### Verdict: **%s**" % r["verdict"])
-    st.write("Long score: **%d / 6** · Short score: **%d / 6**" % (r["long_score"], r["short_score"]))
+    st.write(
+        "Window: **%s** · Long score: **%d / 6** · Short score: **%d / 6**"
+        % (r.get("data_window") or "—", r["long_score"], r["short_score"])
+    )
     st.write(r["action"])
     if r["side"] == "LONG":
         st.success("Side bias: LONG (size mult %.1fx)" % r["size_mult"])
@@ -329,6 +455,30 @@ if st.session_state.conf_result:
         st.error("Side bias: SHORT (size mult %.1fx)" % r["size_mult"])
     else:
         st.info("Side bias: HOLD")
+
+    # Liquidation + leverage context table
+    st.markdown("##### Liquidation & leverage context")
+    liq_rows = [
+        {
+            "Side": "ABOVE (short liq)",
+            "Nearest point": r.get("liq_point_above") or "—",
+            "Dist %": r.get("dist_above_pct") if r.get("dist_above_pct") is not None else "—",
+            "Amount": r.get("liq_amt_above") or "—",
+        },
+        {
+            "Side": "BELOW (long liq)",
+            "Nearest point": r.get("liq_point_below") or "—",
+            "Dist %": r.get("dist_below_pct") if r.get("dist_below_pct") is not None else "—",
+            "Amount": r.get("liq_amt_below") or "—",
+        },
+    ]
+    st.dataframe(liq_rows, use_container_width=True, hide_index=True)
+    lev_rows = [
+        {"Side": "Cumulative LONG leverage", "Value (x)": r.get("cum_long_leverage") or "—"},
+        {"Side": "Cumulative SHORT leverage", "Value (x)": r.get("cum_short_leverage") or "—"},
+    ]
+    st.dataframe(lev_rows, use_container_width=True, hide_index=True)
+
     with st.expander("Long checklist"):
         for h in r["long_hits"]:
             st.write("•", h)
@@ -347,7 +497,15 @@ with st.form("size_form"):
         lev = st.number_input("Leverage", value=10.0, step=1.0)
     with s2:
         ent = st.number_input("Entry", value=float(price) if price else 0.0, step=1.0)
-        stp = st.number_input("Stop loss", value=0.0, step=1.0)
+        # Prefer nearest liq as default stop hint if scored
+        default_sl = 0.0
+        if st.session_state.conf_result:
+            cr = st.session_state.conf_result
+            if cr.get("side") == "LONG" and cr.get("liq_point_below"):
+                default_sl = float(cr["liq_point_below"])
+            elif cr.get("side") == "SHORT" and cr.get("liq_point_above"):
+                default_sl = float(cr["liq_point_above"])
+        stp = st.number_input("Stop loss", value=default_sl, step=1.0)
     sz_go = st.form_submit_button("Calculate size", use_container_width=True)
 
 if sz_go and position_size:
@@ -360,7 +518,10 @@ if sz_go and position_size:
     else:
         st.write("Risk USD: **%.2f** (after size mult)" % ps["risk_usd"])
         st.write("Stop distance: **%.3f%%" % ps["stop_dist_pct"])
-        st.write("Notional: **$%s** · Margin: **$%s**" % ("{:,.0f}".format(ps["notional"]), "{:,.0f}".format(ps["margin"])))
+        st.write(
+            "Notional: **$%s** · Margin: **$%s**"
+            % ("{:,.0f}".format(ps["notional"]), "{:,.0f}".format(ps["margin"]))
+        )
         st.write("Approx liq distance: **%.1f%%" % ps["liq_dist_approx_pct"])
         if ps.get("warning"):
             st.warning(ps["warning"])
@@ -369,6 +530,6 @@ if sz_go and position_size:
 
 st.markdown("---")
 st.caption("Educational only. Matrix thresholds are rules of thumb, not tested probabilities. Never trade on one signal.")
-if st.button("Refresh", use_container_width=True):
+if st.button("Refresh data", use_container_width=True):
     st.cache_data.clear()
     st.rerun()

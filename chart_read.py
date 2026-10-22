@@ -3,7 +3,8 @@ chart_read.py
 BTC / multi-asset 1h chart snapshot for context and caution filters.
 Computes multi-lookback range position, SMAs/EMAs, RSI, ATR, volume ratio/trend,
 trend bias, volume confirmation, ADX/regime context, and improved symmetric chase-risk caution flags.
-Adds low-ATR compression awareness, range-bound detection, and low-RSI bounce awareness for better filtering in quiet/consolidating markets.
+Adds low-ATR compression awareness, range-bound detection, low-RSI / weak-vol bounce awareness,
+and near-support proximity for better filtering in quiet or post-dump markets.
 """
 
 from __future__ import annotations
@@ -145,6 +146,9 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     range_width_pct = ((hi48 - lo48) / px * 100.0) if px > 0 else 0.0
     range_bound = range_width_pct < 2.5 and (adx_val < 25.0 if adx_val else True)
 
+    # Near support: within ~0.6% of 48h low (common magnet for mean-reversion / liq clusters)
+    near_support = (px - lo48) / px * 100.0 < 0.6 if px > 0 else False
+
     # Improved caution flags - location + weak participation or weak trend; stronger in compression / range-bound
     long_caution = ""
     short_caution = ""
@@ -152,7 +156,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     near_24h_low = pos24 < 15
 
     upper_extreme = pos48 > 70 or near_24h_high
-    lower_extreme = pos48 < 30 or near_24h_low
+    lower_extreme = pos48 < 30 or near_24h_low or near_support
 
     if upper_extreme and (vol_ratio < 0.55 or weak_trend or low_atr or range_bound):
         long_caution = "upper/near-high range + low-vol/weak ADX/low-ATR or range-bound (avoid chase)"
@@ -160,7 +164,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         long_caution = "elevated range_pos + RSI without volume confirm"
     if lower_extreme and (vol_ratio < 0.55 or weak_trend or low_atr or range_bound):
         short_caution = "lower/near-low range + low-vol/weak ADX/low-ATR or range-bound (avoid chase)"
-    elif pos48 < 25 and rsi14 < 38 and not vol_confirm:
+    elif pos48 < 25 and rsi14 < 40 and not vol_confirm:
         short_caution = "depressed range_pos + RSI without volume confirm"
 
     # Extra mid-range caution in tight consolidations: prefer waiting for break or extreme + volume
@@ -170,10 +174,10 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         if not short_caution:
             short_caution = "tight range-bound mid-position — wait for break or volume expansion"
 
-    # Low RSI + weak vol bounce awareness (avoid aggressive shorts in oversold quiet conditions)
-    bounce_potential = rsi14 < 35 and vol_ratio < 0.6 and pos48 < 60
+    # Enhanced bounce awareness: low-to-moderate RSI + weak vol on lower range / near support (mean-reversion risk for shorts)
+    bounce_potential = (rsi14 < 42 and vol_ratio < 0.6 and (pos48 < 35 or near_support))
     if bounce_potential and not short_caution:
-        short_caution = "low RSI + weak vol near lower-mid range — bounce risk, avoid chase shorts"
+        short_caution = "weak-vol lower range / near support — bounce risk, avoid chase shorts"
 
     vol_weak = vol_ratio < 0.45
     compression_flag = regime_name == "COMPRESSION" or low_atr or range_bound
@@ -202,6 +206,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         "vol_strength": vol_strength,
         "near_24h_high": near_24h_high,
         "near_24h_low": near_24h_low,
+        "near_support": near_support,
         "long_caution": long_caution,
         "short_caution": short_caution,
         "caution": bool(long_caution or short_caution or vol_weak or compression_flag),
@@ -224,7 +229,8 @@ def caption(snap: Dict[str, Any]) -> str:
         f"Last ~${snap['price']:,.1f}",
         f"48h range: ${lo:,.1f} - ${hi:,.1f} (pos {snap['range_pos_48h']:.1f}% - "
         f"{'upper' if snap['range_pos_48h']>65 else 'lower' if snap['range_pos_48h']<35 else 'mid'} range, width {snap.get('range_width_pct',0):.1f}%)"
-        + (" [RANGE-BOUND]" if snap.get("range_bound") else ""),
+        + (" [RANGE-BOUND]" if snap.get("range_bound") else "")
+        + (" [NEAR SUPPORT]" if snap.get("near_support") else ""),
         f"24h pos ~{snap['range_pos_24h']:.1f}% / 7d pos ~{snap['range_pos_7d']:.1f}%",
         f"Trend: **{snap['trend']}** (SMA20={snap['sma20']:.0f} SMA50={snap['sma50']:.0f} | EMA20={snap.get('ema20',0):.0f} | dist SMA20 {snap.get('dist_sma20_pct',0):+.1f}%)",
         f"RSI(14): **{snap['rsi14']:.1f}**  ATR(14): ~{snap['atr14']:.0f} ({snap.get('atr_pct',0):.2f}%)"
@@ -245,4 +251,6 @@ def caption(snap: Dict[str, Any]) -> str:
         lines.append("Near 24h high")
     if snap.get("near_24h_low"):
         lines.append("Near 24h low")
+    if snap.get("near_support"):
+        lines.append("Near 48h support / possible liq magnet")
     return "\n".join(lines)

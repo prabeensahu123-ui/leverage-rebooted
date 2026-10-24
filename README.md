@@ -35,16 +35,16 @@ python -m algo_bot.bot once
 - Added EMAs, ATR%, range width, near_24h_high/low, near_support, dist_sma20_pct, range_bound flag, and optional ADX/regime (from regime.py) for richer context.
 - Caution logic tightened: requires location extreme *and* weak participation or weak trend strength or range-bound conditions.
 
-### Latest live snapshot (2026-10-23 ~03:30 IST / ~22:00 UTC)
+### Latest live snapshot (2026-10-25 ~04:00 IST / ~22:30 UTC)
 
-- Last ~$81,402
-- 48h range: ~$80,894 – $84,866 (pos **~12.8%** — lower range, width ~4.9%) [NEAR SUPPORT]
-- 24h pos ~14% / 7d pos ~18%
-- Trend: **bearish** (SMA20~81,838 SMA50~82,889 | dist SMA20 -0.5%)
-- RSI(14): **~40.5**  ATR(14): ~387 (~0.48%)
-- Vol ratio: **~0.28** (falling, weak)
-- Funding: mild positive (~+0.005% to +0.01% / 8h)
-- Liq clusters: heavier long-fuel below near ~80.3-81.5k; shorts higher (e.g. ~85k+)
-- Context: Post-dump into lower 48h range on very weak volume. Bearish structure but low participation and proximity to support / long-liq magnets raise bounce risk. Prefer waiting for volume-confirmed break of ~80.9k support or reclaim of SMA20 / mid-range. Avoid chasing shorts. Decision zone ahead of Fed (28 Oct).
+- Last ~$80,568
+- 48h range: ~$79,179 – $82,035 (pos **~48.6%** — mid range, width ~3.5%)
+- 24h pos ~69% / 7d pos ~mid
+- Trend: **mixed** (SMA20~80,529 SMA50~81,098 | dist SMA20 +0.05%)
+- RSI(14): **~47.9**  ATR(14): ~367 (~0.46%)
+- Vol ratio: **~0.65** (normal/weak, no strong confirm)
+- Funding: mild positive (~+0.005% to +0.007% / 8h)
+- Liq / positioning: ~68% accounts long; recent 24h liquidations heavily long-sided ($200M+); OI ~$30B slight up
+- Context: Stabilized in mid-48h range after earlier dump toward ~79.2k. Neutral RSI, mixed MAs, moderate ATR, weak-normal volume. No extreme location caution. Prefer waiting for volume expansion or break of mid-range / SMA50 reclaim before directional leverage. Decision zone ahead of Fed (28 Oct hold base case but hawkish tone risk). Avoid chasing either side without confirmation.
 
 Educational only — not financial advice.

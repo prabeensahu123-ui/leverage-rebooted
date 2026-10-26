@@ -574,7 +574,7 @@ if sz_go and position_size:
         st.write("Stop distance: **%.3f%%**" % ps["stop_dist_pct"])
         st.write(
             "Notional: **$%s** · Margin: **$%s**"
-            % ("{:,.0f}".format(ps["notional"]), "{:,.0f}".format(ps["margin"])
+            % ("{:,.0f}".format(ps["notional"]), "{:,.0f}".format(ps["margin"]))
         )
         st.write("Approx liq distance: **%.1f%%**" % ps["liq_dist_approx_pct"])
         if ps.get("warning"):

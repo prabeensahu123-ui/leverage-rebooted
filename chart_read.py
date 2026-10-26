@@ -5,6 +5,12 @@ Computes multi-lookback range position, SMAs/EMAs, RSI, ATR, volume ratio/trend,
 trend bias, volume confirmation, ADX/regime context, and improved symmetric chase-risk caution flags.
 Adds low-ATR compression awareness, range-bound detection, low-RSI / weak-vol bounce awareness,
 near-support proximity, and breakout-watch for better filtering in quiet or post-dump markets.
+
+Updates (Oct 2026):
+- Dual volume measure (median + mean) for robustness
+- Lightweight ADX fallback so regime is never blank when enough bars exist
+- Bollinger position + short-term momentum added
+- Refined caution / bias thresholds while keeping conservative philosophy
 """
 
 from __future__ import annotations
@@ -59,6 +65,40 @@ def _range_pos(price: float, lo: float, hi: float) -> float:
     return float((price - lo) / (hi - lo) * 100.0)
 
 
+def _simple_adx(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 14) -> float:
+    """Lightweight ADX fallback when regime import fails."""
+    n = len(closes)
+    if n < period + 2:
+        return 0.0
+    up = highs[1:] - highs[:-1]
+    dn = lows[:-1] - lows[1:]
+    plus_dm = np.where((up > dn) & (up > 0), up, 0.0)
+    minus_dm = np.where((dn > up) & (dn > 0), dn, 0.0)
+    prev = np.roll(closes, 1)
+    prev[0] = closes[0]
+    tr = np.maximum(highs - lows, np.maximum(np.abs(highs - prev), np.abs(lows - prev)))[1:]
+    def wilder(arr):
+        s = np.zeros(len(arr))
+        if len(arr) < period:
+            return s
+        s[period - 1] = np.sum(arr[:period])
+        for i in range(period, len(arr)):
+            s[i] = s[i - 1] - (s[i - 1] / period) + arr[i]
+        return s
+    atr_w = wilder(tr)
+    plus_s = wilder(plus_dm)
+    minus_s = wilder(minus_dm)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        plus_di = 100.0 * plus_s / np.where(atr_w == 0, np.nan, atr_w)
+        minus_di = 100.0 * minus_s / np.where(atr_w == 0, np.nan, atr_w)
+        dx = 100.0 * np.abs(plus_di - minus_di) / np.where((plus_di + minus_di) == 0, np.nan, (plus_di + minus_di))
+    dx = np.nan_to_num(dx, nan=0.0)
+    if len(dx) < period * 2:
+        return float(np.mean(dx)) if len(dx) else 0.0
+    adx_val = float(np.mean(dx[-period:]))
+    return adx_val
+
+
 def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     """Build chart snapshot from 1h (or similar) candle list, oldest-first or newest-first.
 
@@ -110,15 +150,29 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     atr14 = _atr(highs, lows, closes)
     atr_pct = (atr14 / px * 100.0) if px > 0 else 0.0
 
-    # Volume: median last 3 vs prior 12 for more sensitivity to recent participation
+    # Bollinger position (20, 2)
+    bb_window = closes[-20:] if n >= 20 else closes
+    bb_mid = float(np.mean(bb_window))
+    bb_std = float(np.std(bb_window)) or 1e-9
+    bb_upper = bb_mid + 2 * bb_std
+    bb_lower = bb_mid - 2 * bb_std
+    bb_pos = (px - bb_lower) / (bb_upper - bb_lower) if bb_upper > bb_lower else 0.5
+
+    # Short-term momentum (last 4 bars % change)
+    mom4 = ((closes[-1] - closes[-5]) / closes[-5] * 100.0) if n >= 5 and closes[-5] > 0 else 0.0
+
+    # Volume: dual measure for robustness (median preferred, mean fallback)
     recent_n = min(3, n)
     prior_start = max(0, n - 15)
     prior_end = max(0, n - 3)
-    vol_recent = float(np.median(vols[-recent_n:])) if recent_n else 0.0
-    vol_prior = float(np.median(vols[prior_start:prior_end])) if prior_end > prior_start else vol_recent
-    vol_ratio = vol_recent / vol_prior if vol_prior > 0 else 1.0
-    vol_trend = "falling" if vols[-1] < vol_prior else ("rising" if vols[-1] > vol_prior * 1.1 else "flat")
-    vol_confirm = vols[-1] > vol_prior * 1.25  # last bar volume expansion
+    vol_recent_med = float(np.median(vols[-recent_n:])) if recent_n else 0.0
+    vol_prior_med = float(np.median(vols[prior_start:prior_end])) if prior_end > prior_start else vol_recent_med
+    vol_recent_mean = float(np.mean(vols[-recent_n:])) if recent_n else 0.0
+    vol_prior_mean = float(np.mean(vols[prior_start:prior_end])) if prior_end > prior_start else vol_recent_mean
+    vol_ratio = (vol_recent_med / vol_prior_med if vol_prior_med > 0 else
+                 vol_recent_mean / vol_prior_mean if vol_prior_mean > 0 else 1.0)
+    vol_trend = "falling" if vols[-1] < vol_prior_med else ("rising" if vols[-1] > vol_prior_med * 1.1 else "flat")
+    vol_confirm = vols[-1] > max(vol_prior_med, vol_prior_mean) * 1.25
     vol_strength = "strong" if vol_ratio >= 1.15 else ("weak" if vol_ratio < 0.55 else "normal")
 
     if px > sma20 > sma50 and px > ema20 > ema50:
@@ -128,7 +182,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     else:
         trend = "mixed"
 
-    # Regime / ADX context (optional)
+    # Regime / ADX context
     regime_info = {}
     adx_val = 0.0
     regime_name = "UNKNOWN"
@@ -139,18 +193,27 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
             regime_name = str(regime_info.get("vol_state") or "UNKNOWN")
         except Exception:
             pass
-    weak_trend = adx_val < 20.0 if adx_val else False
-    low_atr = atr_pct < 0.45  # slightly relaxed quiet market threshold
+    if adx_val <= 0 and n >= 30:
+        adx_val = _simple_adx(highs, lows, closes)
+        if adx_val > 0 and regime_name == "UNKNOWN":
+            if adx_val < 18:
+                regime_name = "RANGE"
+            elif adx_val >= 25:
+                regime_name = "TREND"
+            else:
+                regime_name = "MIXED"
+    weak_trend = adx_val < 20.0 if adx_val else True
+    low_atr = atr_pct < 0.45
 
-    # Range-bound detection for tight consolidations (common in current BTC environment)
+    # Range-bound detection
     range_width_pct = ((hi48 - lo48) / px * 100.0) if px > 0 else 0.0
     range_bound = range_width_pct <= 2.6 and (adx_val < 26.0 if adx_val else True)
 
-    # Near support: within ~0.6% of 48h low (common magnet for mean-reversion / liq clusters)
+    # Near support / resistance
     near_support = (px - lo48) / px * 100.0 < 0.6 if px > 0 else False
     near_resistance = (hi48 - px) / px * 100.0 < 0.6 if px > 0 else False
 
-    # Improved caution flags - location + weak participation or weak trend; stronger in compression / range-bound
+    # Caution flags
     long_caution = ""
     short_caution = ""
     near_24h_high = pos24 > 85
@@ -169,19 +232,16 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     elif pos48 < 28 and rsi14 < 42 and not vol_confirm:
         short_caution = "depressed range_pos + RSI without volume confirm"
 
-    # Extra mid-range caution in tight consolidations: prefer waiting for break or extreme + volume
     if range_bound and 32 < pos48 < 68 and not vol_confirm:
         if not long_caution:
             long_caution = "tight range-bound mid-position — wait for break or volume expansion"
         if not short_caution:
             short_caution = "tight range-bound mid-position — wait for break or volume expansion"
 
-    # Enhanced bounce awareness: low-to-moderate RSI + weak vol on lower range / near support (mean-reversion risk for shorts)
     bounce_potential = (rsi14 < 44 and vol_ratio < 0.65 and (pos48 < 38 or near_support))
     if bounce_potential and not short_caution:
         short_caution = "weak-vol lower range / near support — bounce risk, avoid chase shorts"
 
-    # Breakout watch: near range edge + volume building or ADX expansion
     breakout_watch = False
     if (near_resistance or pos48 > 75) and (vol_ratio > 0.9 or (adx_val > 22 and not weak_trend)):
         breakout_watch = True
@@ -189,7 +249,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         breakout_watch = True
 
     vol_weak = vol_ratio < 0.50
-    compression_flag = regime_name == "COMPRESSION" or low_atr or range_bound
+    compression_flag = regime_name in ("COMPRESSION", "RANGE") or low_atr or range_bound
 
     # Actionable bias
     if range_bound and not breakout_watch and not vol_confirm:
@@ -200,6 +260,8 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         bias = "CAUTION SHORTS — avoid chase"
     elif bounce_potential:
         bias = "BOUNCE WATCH — mean-reversion risk on shorts"
+    elif abs(mom4) > 1.2 and vol_confirm:
+        bias = "MOMENTUM BUILDING — monitor for follow-through"
     else:
         bias = "NEUTRAL — monitor for expansion"
 
@@ -219,6 +281,8 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         "rsi14": round(rsi14, 1),
         "atr14": round(atr14, 1),
         "atr_pct": round(atr_pct, 2),
+        "bb_pos": round(bb_pos, 3),
+        "mom4_pct": round(mom4, 2),
         "trend": trend,
         "vol_ratio": round(vol_ratio, 2),
         "vol_trend": vol_trend,
@@ -261,6 +325,7 @@ def caption(snap: Dict[str, Any]) -> str:
         f"RSI(14): **{snap['rsi14']:.1f}**  ATR(14): ~{snap['atr14']:.0f} ({snap.get('atr_pct',0):.2f}%)"
         + (" [LOW ATR]" if snap.get("low_atr") else "")
         + (" [BOUNCE POTENTIAL]" if snap.get("bounce_potential") else ""),
+        f"BB pos: {snap.get('bb_pos', 0.5):.2f}  Mom4: {snap.get('mom4_pct', 0):+.2f}%",
         f"Vol ratio: **{snap['vol_ratio']:.2f}** ({snap['vol_trend']}, {snap.get('vol_strength','')})"
         + (" -> VOL WEAK" if snap.get("vol_weak") else "")
         + (" + CONFIRM" if snap.get("vol_confirm") else ""),

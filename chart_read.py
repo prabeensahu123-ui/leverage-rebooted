@@ -11,7 +11,9 @@ Updates (Oct 2026):
 - Lightweight ADX fallback so regime is never blank when enough bars exist
 - Bollinger position + short-term momentum added
 - Refined caution / bias thresholds while keeping conservative philosophy
-- Stricter breakout_watch: requires volume participation (ratio >=0.65 or confirm) even with ADX (Oct 2026 update)
+- Stricter breakout_watch: requires volume participation (ratio >=0.65 or confirm) even with ADX
+- ATR-adaptive range-bound threshold (width relative to recent ATR) for tighter compression detection
+- Stronger upper-range caution when RSI elevated + weak vol even if not extreme pos (crowded long risk)
 """
 
 from __future__ import annotations
@@ -206,9 +208,10 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     weak_trend = adx_val < 20.0 if adx_val else True
     low_atr = atr_pct < 0.45
 
-    # Range-bound detection
+    # Range-bound detection — ATR-adaptive for better compression awareness
     range_width_pct = ((hi48 - lo48) / px * 100.0) if px > 0 else 0.0
-    range_bound = range_width_pct <= 2.6 and (adx_val < 26.0 if adx_val else True)
+    adaptive_width_thresh = max(2.4, atr_pct * 5.5)  # tighter when ATR is low
+    range_bound = range_width_pct <= adaptive_width_thresh and (adx_val < 26.0 if adx_val else True)
 
     # Near support / resistance
     near_support = (px - lo48) / px * 100.0 < 0.6 if px > 0 else False
@@ -225,6 +228,8 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
 
     if upper_extreme and (vol_ratio < 0.60 or weak_trend or low_atr or range_bound):
         long_caution = "upper/near-high range + low-vol/weak ADX/low-ATR or range-bound (avoid chase)"
+    elif pos48 > 65 and rsi14 > 58 and vol_ratio < 0.70 and not vol_confirm:
+        long_caution = "elevated range_pos + RSI + weak volume (crowded long / chase risk)"
     elif pos48 > 72 and rsi14 > 60 and not vol_confirm:
         long_caution = "elevated range_pos + RSI without volume confirm"
 
@@ -259,7 +264,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     if range_bound and not breakout_watch and not vol_confirm:
         bias = "WAIT — range-bound / compression, prefer break or volume confirm"
     elif long_caution and not short_caution:
-        bias = "CAUTION LONGS — avoid chase"
+        bias = "CAUTION LONGS — avoid chase (upper range / weak participation)"
     elif short_caution and not long_caution:
         bias = "CAUTION SHORTS — avoid chase"
     elif bounce_potential:

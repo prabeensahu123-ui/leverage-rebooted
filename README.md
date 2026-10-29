@@ -35,18 +35,21 @@ python -m algo_bot.bot once
 - Volume uses median (last 15 / last 3 vs prior) for better recent sensitivity; added vol_confirm (last bar expansion) and vol_strength.
 - Added EMAs, ATR%, range width, near_24h_high/low, near_support/resistance, dist_sma20_pct, range_bound flag, breakout_watch, bias recommendation, and optional ADX/regime (from regime.py) for richer context.
 - Caution logic tightened: requires location extreme *and* weak participation or weak trend strength or range-bound conditions. ATR-adaptive width for better compression detection.
+- Oct 30 update: Strong volume participation (ratio >=1.15 or last-bar confirm) softens pure range-bound caution on extremes, allowing high-participation moves more room while still protecting against weak-vol chases.
 
-### Latest live snapshot (2026-10-29 ~04:00 IST / ~22:30 UTC prior day)
+### Latest live snapshot (2026-10-30 ~04:00 IST / ~22:30 UTC)
 
-- Last ~$81,200–$81,300
-- 48h range: ~$79,630 – $81,540 (pos **~80%+** — upper range, width ~2.3%) [RANGE-BOUND] [NEAR RESIST]
-- 24h pos ~mid-upper / 7d pos lower-mid
-- Trend: **mixed / short-term bullish** (price near/above short MAs but daily still below some longer averages)
-- RSI(14): **~55–60** (neutral-elevated on short TF)  ATR(14): ~400 (~0.5%)
-- Vol ratio: weak / normal (participation still modest)
-- Regime: MIXED / TREND ADX mid-20s [COMPRESSION/RANGE]
-- Funding: mild positive (~+0.008% to +0.010% / 8h)
-- Liq / positioning: ~65–67% accounts long; OI stable-to-slightly up; recent liqs mixed
-- Context: Upper half of tight 48h range near resistance, elevated short-term RSI, modest volume, range-bound compression. Short-term MAs supportive but participation low and daily structure not fully confirmed. **Bias: WAIT / CAUTION LONGS — range-bound / compression near resist, prefer break or volume confirm before directional leverage.** Mild positive funding, longs somewhat crowded. Avoid chasing longs without volume expansion. Event risk (FOMC aftermath) still relevant.
+- Last ~$79,124.5
+- 48h range: $78,211.0 - $81,954.0 (pos **24.4%** — lower range, width 4.7%) [RANGE-BOUND]
+- 24h pos ~24.4% / 7d pos ~23.9%
+- Trend: **bearish** (SMA20=80223 SMA50=80655 | EMA20=80234 | dist SMA20 -1.4%)
+- RSI(14): **41.7**  ATR(14): ~713 (0.90%)
+- BB pos: 0.12  Mom4: -2.11%
+- Vol ratio: **1.56** (falling, strong)
+- Regime: **TREND**  ADX: 24.5 [COMPRESSION/RANGE]
+- BREAKOUT WATCH: near range edge + volume/ADX building
+- SHORT caution: lower/near-low range + low-vol/weak ADX/low-ATR or range-bound (avoid chase)  [softened if strong vol in refined logic]
+- Bias: CAUTION SHORTS — avoid chase   (or PARTICIPATION AT EXTREME under refined filter)
+- Context: Price in lower portion of recent 48h range after a pullback, short-term trend bearish, RSI neutral-low, but volume participation strong and range-bound/compression still present. Prefer waiting for clear break with continued volume rather than chasing shorts into potential support/liq magnet. Mild caution on shorts remains appropriate until expansion confirms.
 
 Educational only — not financial advice.

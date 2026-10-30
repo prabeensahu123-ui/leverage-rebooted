@@ -37,19 +37,18 @@ python -m algo_bot.bot once
 - Caution logic tightened: requires location extreme *and* weak participation or weak trend strength or range-bound conditions. ATR-adaptive width for better compression detection.
 - Oct 30 update: Strong volume participation (ratio >=1.15 or last-bar confirm) softens pure range-bound caution on extremes, allowing high-participation moves more room while still protecting against weak-vol chases.
 
-### Latest live snapshot (2026-10-30 ~04:00 IST / ~22:30 UTC)
+### Latest live snapshot (2026-10-31 ~04:07 IST)
 
-- Last ~$79,124.5
-- 48h range: $78,211.0 - $81,954.0 (pos **24.4%** — lower range, width 4.7%) [RANGE-BOUND]
-- 24h pos ~24.4% / 7d pos ~23.9%
-- Trend: **bearish** (SMA20=80223 SMA50=80655 | EMA20=80234 | dist SMA20 -1.4%)
-- RSI(14): **41.7**  ATR(14): ~713 (0.90%)
-- BB pos: 0.12  Mom4: -2.11%
-- Vol ratio: **1.56** (falling, strong)
-- Regime: **TREND**  ADX: 24.5 [COMPRESSION/RANGE]
-- BREAKOUT WATCH: near range edge + volume/ADX building
-- SHORT caution: lower/near-low range + low-vol/weak ADX/low-ATR or range-bound (avoid chase)  [softened if strong vol in refined logic]
-- Bias: CAUTION SHORTS — avoid chase   (or PARTICIPATION AT EXTREME under refined filter)
-- Context: Price in lower portion of recent 48h range after a pullback, short-term trend bearish, RSI neutral-low, but volume participation strong and range-bound/compression still present. Prefer waiting for clear break with continued volume rather than chasing shorts into potential support/liq magnet. Mild caution on shorts remains appropriate until expansion confirms.
+- Last ~$76,926.0
+- 48h range: $76,270.0 - $81,954.0 (pos **11.5%** — lower range, width 7.4%)
+- 24h pos ~24.1% / 7d pos ~11.5%
+- Trend: **bearish** (SMA20=77516 SMA50=78977 | EMA20=77504 | dist SMA20 -0.8%)
+- RSI(14): **34.7**  ATR(14): ~567 (0.74%) [BOUNCE POTENTIAL]
+- BB pos: 0.25  Mom4: +0.41%
+- Vol ratio: **0.39** (falling, weak) -> VOL WEAK
+- Regime: **TREND**  ADX: 32.5 (DI bias: bearish, -DI dominant)
+- SHORT caution: lower/near-low range + low-vol/weak ADX/low-ATR or range-bound (avoid chase) + bounce potential (RSI low + weak vol)
+- Bias: CAUTION SHORTS — avoid chase
+- Context: Deep lower range of recent 48h after further pullback, short-term trend bearish with ADX confirming (-DI > +DI), RSI oversold-ish, volume participation weak. High bounce/mean-reversion risk — strong caution on shorts. Prefer waiting for volume expansion or clear reclaim rather than chasing.
 
 Educational only — not financial advice.

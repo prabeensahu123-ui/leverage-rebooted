@@ -90,6 +90,7 @@ def fetch_candles(s, res, days):
             timeout=15,
         ).json()
         rows = r.get("result", []) if isinstance(r, dict) else r
+        # Delta returns newest-first; oldest-first needed for RSI/indicators
         return list(reversed(rows)) if isinstance(rows, list) else []
     except Exception:
         return []
@@ -110,16 +111,22 @@ def load_paper_state():
         return {"open_trades": [], "history": []}
 
 def rsi_from_closes(closes, period=14):
+    """Wilder RSI (TradingView-compatible). Needs oldest→newest closes."""
     if closes is None or len(closes) < period + 1:
         return None
     c = np.asarray(closes, dtype=float)
     d = np.diff(c)
-    up = np.where(d > 0, d, 0.0)
-    dn = np.where(d < 0, -d, 0.0)
-    ru = np.mean(up[-period:]) if len(up) >= period else 0.0
-    rd = np.mean(dn[-period:]) if len(dn) >= period else 1e-9
-    rs = ru / (rd if rd > 0 else 1e-9)
-    return float(100 - (100 / (1 + rs)))
+    gains = np.where(d > 0, d, 0.0)
+    losses = np.where(d < 0, -d, 0.0)
+    avg_gain = float(np.mean(gains[:period]))
+    avg_loss = float(np.mean(losses[:period]))
+    for i in range(period, len(gains)):
+        avg_gain = (avg_gain * (period - 1) + float(gains[i])) / period
+        avg_loss = (avg_loss * (period - 1) + float(losses[i])) / period
+    if avg_loss < 1e-12:
+        return 100.0 if avg_gain > 0 else 50.0
+    rs = avg_gain / avg_loss
+    return float(100.0 - (100.0 / (1.0 + rs)))
 
 def tf_price_change(candles):
     if not candles or len(candles) < 2:
@@ -490,7 +497,7 @@ st.markdown("---")
 st.subheader("Trade analysis · Technical vs Confluence")
 st.caption(
     "Below the 6-point confluence score. Candles cache ~60s. "
-    "**Tech bias** = price change + RSI + SMA trend + MACD. "
+    "**Tech bias** = price change + RSI (Wilder) + SMA trend + MACD. "
     "**Confidence %** = how aligned those indicators are (0–100; not a win-rate promise). "
     "🟢 LONG · 🔴 SHORT."
 )

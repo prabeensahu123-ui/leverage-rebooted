@@ -1,3 +1,6 @@
 {
-  "open_trades": {}
+  "open_trades": [],
+  "history": [],
+  "last_run_utc": null,
+  "last_run_source": null
 }

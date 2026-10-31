@@ -2,23 +2,32 @@ name: Paper Trade Check
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    # Offset from :00/:30 — less likely to be dropped under GitHub load
+    - cron: "12,42 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: paper-trade
+  cancel-in-progress: false
+
 jobs:
   paper-trade:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
@@ -26,11 +35,39 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run one paper-trade check
+        id: bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
-        run: python -m algo_bot.bot once
+        run: |
+          set -e
+          echo "=== Paper bot start $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+          python -m algo_bot.bot once
+          echo "=== Paper bot end ==="
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          path = "algo_bot/state.json"
+          st = {"open_trades": [], "history": []}
+          if os.path.exists(path):
+              try:
+                  with open(path) as f:
+                      st = json.load(f)
+              except Exception:
+                  pass
+          ot = st.get("open_trades", [])
+          if isinstance(ot, dict):
+              ot = list(ot.values()) if ot else []
+          st["open_trades"] = ot
+          st.setdefault("history", [])
+          st["last_run_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          st["last_run_source"] = "github_actions"
+          os.makedirs("algo_bot", exist_ok=True)
+          with open(path, "w") as f:
+              json.dump(st, f, indent=2)
+          print("Heartbeat written:", st["last_run_utc"], "open=", len(ot))
+          PY
 
       - name: Save state and trades
         if: always()
@@ -39,8 +76,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add algo_bot/state.json algo_bot/trades.csv || true
           if git diff --cached --quiet; then
-            echo "No paper-trade file changes"
+            echo "No paper-trade file changes to commit"
           else
-            git commit -m "chore: update paper trading state"
+            git commit -m "chore: paper trade check $(date -u +%Y-%m-%dT%H:%MZ)"
             git push
+            echo "Pushed state update"
           fi

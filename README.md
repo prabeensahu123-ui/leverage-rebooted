@@ -60,4 +60,28 @@ python -m algo_bot.bot once
 - Bias includes REJECTION WATCH state.
 - Improves filtering in quiet post-pullback consolidations without loosening the conservative philosophy.
 
+### Chart pass (Nov 02 2026)
+
+- Integrated candle pattern detection (candle_patterns.py) into snapshot for last-bar context.
+- Added Supertrend (10-period ATR × 3) as additional directional filter; influences caution when conflicting with location extremes.
+- Relative volume baseline expanded to 20-bar median (`rel_vol`) for clearer low-participation detection.
+- Volume weak threshold tightened (<0.45 or low rel_vol); bias text now explicitly notes low participation in WAIT state.
+- Pattern + Supertrend can elevate bias when aligned with volume/ST confirmation.
+
+### Latest live snapshot (2026-11-02 ~04:10 IST)
+
+- Last ~$77,744.5
+- 48h range: $76,878.0 - $78,230.0 (pos **64.1%** — mid range, width 1.7%) [RANGE-BOUND]
+- 24h pos ~37.2% / 7d pos ~25.9%
+- Trend: **mixed** (SMA20=77925 SMA50=77621 | EMA20=77856 | dist SMA20 -0.2%)
+- RSI(14): **32.0**  ATR(14): ~206 (0.26%) [LOW ATR]
+- BB pos: 0.13  Mom4: -0.14%
+- Vol ratio: **0.44** (rel 0.53, falling, weak) -> VOL WEAK
+- Supertrend: **bullish** @ ~$77,430
+- Pattern: **No clear pattern** (HOLD)
+- Regime: **RANGE**  ADX: 16.4 (DI: +17/-24 bearish) [COMPRESSION/RANGE]
+- LONG/SHORT caution: tight range-bound mid-position — wait for break or volume expansion
+- Bias: WAIT — range-bound / compression + low participation, prefer break or volume confirm
+- Context: Tight compression near mid-48h with weak volume and conflicting DI (bearish) vs Supertrend (bullish). Prefer waiting for volume expansion or clear directional confirmation. Research notes low relative volume typical in current post-pullback consolidation.
+
 Educational only — not financial advice.

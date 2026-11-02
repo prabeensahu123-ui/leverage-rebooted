@@ -84,4 +84,25 @@ python -m algo_bot.bot once
 - Bias: WAIT — range-bound / compression + low participation, prefer break or volume confirm
 - Context: Tight compression near mid-48h with weak volume and conflicting DI (bearish) vs Supertrend (bullish). Prefer waiting for volume expansion or clear directional confirmation. Research notes low relative volume typical in current post-pullback consolidation.
 
+### Chart pass (Nov 03 2026 ~04:10 IST)
+
+- Full integration of Supertrend + candle patterns into `chart_read.snapshot` return dict and caution logic (ST conflict strengthens caution on extremes).
+- Expanded relative volume (`rel_vol` 20 vs prior 20) and tightened weak threshold.
+- Live OKX 1h data processed through snapshot logic.
+
+### Latest live snapshot (2026-11-03 ~04:10 IST)
+
+- Last ~$76,785
+- 48h range: $76,667 - $78,831 (pos **5.5%** — near low, width 2.8%)
+- 24h pos ~5.5% / 7d pos ~9.2%
+- Trend: **mixed** (SMA20=77675 SMA50=77813 | EMA20=77457 | dist SMA20 -1.1%)
+- RSI(14): **13.8**  ATR(14): ~437 (0.57%)
+- BB pos: 0.10  Mom4: -0.27%
+- Vol ratio: **1.00** (flat, normal)
+- Near 24h low / near support: Yes
+- Regime: **RANGE**
+- SHORT caution: lower extreme + range conditions (avoid chase)
+- Bias: CAUTION SHORTS — avoid chase (near lows / oversold)
+- Context: Price sitting near 48h/24h lows with deeply oversold RSI. Funding remains mildly positive (~+0.01%/8h, longs paying). Prefer waiting for volume expansion or pattern/ST confirmation before aggressive shorts; bounce risk elevated if participation stays weak. Liquidation clusters likely below current levels.
+
 Educational only — not financial advice.

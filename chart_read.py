@@ -20,6 +20,8 @@ Nov 2026 R&D:
 - Explicit DI bias (+DI/-DI) integrated into caution and caption.
 - Symmetric rejection_potential for upper-range elevated RSI + weak volume.
 - Long caution strengthened by bearish DI at extremes.
+- Nov 02: Candle pattern detection + Supertrend (10x3) as directional filter.
+- Nov 03: Full integration of patterns/ST into snapshot return + caution influence; relative volume expanded.
 """
 
 from __future__ import annotations
@@ -33,6 +35,13 @@ try:
 except Exception:
     HAS_REGIME = False
     classify_regime = None
+
+try:
+    from candle_patterns import detect_candle_pattern
+    HAS_PATTERNS = True
+except Exception:
+    HAS_PATTERNS = False
+    detect_candle_pattern = None
 
 
 def _rsi(closes: np.ndarray, period: int = 14) -> float:
@@ -108,6 +117,19 @@ def _simple_adx(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period:
     return float(dx)
 
 
+def _supertrend(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, period: int = 10, mult: float = 3.0):
+    if len(closes) < period + 1:
+        return "neutral", closes[-1]
+    atr = _atr(highs, lows, closes, period)
+    hl2 = (highs + lows) / 2.0
+    upper = hl2 + mult * atr
+    lower = hl2 - mult * atr
+    # Simple final value approx (full Supertrend would track previous)
+    st_dir = "bullish" if closes[-1] > lower[-1] else "bearish"
+    st_val = float(lower[-1] if st_dir == "bullish" else upper[-1])
+    return st_dir, st_val
+
+
 def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     if not candles or len(candles) < 30:
         return None
@@ -115,6 +137,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     highs = np.array([float(c.get("high") or 0) for c in candles], dtype=float)
     lows = np.array([float(c.get("low") or 0) for c in candles], dtype=float)
     vols = np.array([float(c.get("volume") or 0) for c in candles], dtype=float)
+    opens = np.array([float(c.get("open") or c.get("close") or 0) for c in candles], dtype=float)
     price = float(closes[-1])
     if price <= 0:
         return None
@@ -135,15 +158,16 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
     atr = _atr(highs, lows, closes, 14)
     atr_pct = atr / price * 100.0 if price else 0.0
 
-    # volume
+    # volume (expanded relative)
     recent = vols[-15:] if len(vols) >= 15 else vols
     last3 = vols[-3:] if len(vols) >= 3 else vols
     prior = vols[-18:-3] if len(vols) >= 18 else vols[:-3] if len(vols) > 3 else vols
     med_recent = float(np.median(recent)) if len(recent) else 0.0
     med_prior = float(np.median(prior)) if len(prior) else med_recent
     vol_ratio = (med_recent / med_prior) if med_prior > 1e-12 else 1.0
+    rel_vol = float(np.median(vols[-20:]) / np.median(vols[-40:-20])) if len(vols) >= 40 else vol_ratio
     vol_confirm = bool(len(vols) >= 2 and vols[-1] > vols[-2] * 1.1)
-    vol_strength = "strong" if vol_ratio >= 1.15 or vol_confirm else ("weak" if vol_ratio < 0.75 else "normal")
+    vol_strength = "strong" if vol_ratio >= 1.15 or vol_confirm else ("weak" if vol_ratio < 0.45 or rel_vol < 0.6 else "normal")
     vol_trend = "rising" if vol_ratio >= 1.05 else ("falling" if vol_ratio < 0.9 else "flat")
 
     # BB pos + mom
@@ -175,6 +199,15 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         mdi = float(np.mean(down_moves))
     di_bias = "bullish" if pdi > mdi * 1.1 else ("bearish" if mdi > pdi * 1.1 else "neutral")
 
+    st_dir, st_val = _supertrend(highs, lows, closes)
+
+    pattern_name, pattern_bias = ("No clear pattern", "HOLD")
+    if HAS_PATTERNS and detect_candle_pattern:
+        try:
+            pattern_name, pattern_bias = detect_candle_pattern(opens, highs, lows, closes)
+        except Exception:
+            pass
+
     regime = "UNKNOWN"
     if HAS_REGIME and classify_regime:
         try:
@@ -200,11 +233,11 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
 
     long_caution = False
     short_caution = False
-    if upper_extreme and (weak_part or adx < 18 or (range_bound and not strong_part) or di_bias == "bearish"):
+    if upper_extreme and (weak_part or adx < 18 or (range_bound and not strong_part) or di_bias == "bearish" or st_dir == "bearish"):
         long_caution = True
     if upper_extreme and rsi >= 60 and weak_part:
         long_caution = True
-    if lower_extreme and (weak_part or adx < 18 or (range_bound and not strong_part)):
+    if lower_extreme and (weak_part or adx < 18 or (range_bound and not strong_part) or st_dir == "bullish"):
         short_caution = True
 
     bounce_potential = lower_extreme and rsi <= 40 and weak_part
@@ -222,6 +255,8 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         bias = "BOUNCE WATCH"
     elif breakout_watch:
         bias = "BREAKOUT WATCH"
+    elif pattern_bias != "HOLD" and (strong_part or st_dir != "neutral"):
+        bias = f"PATTERN {pattern_bias}"
     else:
         bias = "NEUTRAL"
 
@@ -242,6 +277,7 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         "atr": atr,
         "atr_pct": atr_pct,
         "vol_ratio": vol_ratio,
+        "rel_vol": rel_vol,
         "vol_trend": vol_trend,
         "vol_confirm": vol_confirm,
         "vol_strength": vol_strength,
@@ -263,6 +299,10 @@ def snapshot(candles: List[dict]) -> Optional[Dict[str, Any]]:
         "breakout_watch": breakout_watch,
         "bias": bias,
         "trend": trend,
+        "supertrend": st_dir,
+        "supertrend_val": st_val,
+        "pattern": pattern_name,
+        "pattern_bias": pattern_bias,
     }
 
 
@@ -276,6 +316,8 @@ def caption(snap: Dict[str, Any]) -> str:
         f"ATR% {snap['atr_pct']:.2f}",
         f"vol {snap['vol_ratio']:.2f} ({snap['vol_trend']})",
         f"ADX {snap['adx']:.1f} DI {snap.get('di_bias','?')}",
+        f"ST {snap.get('supertrend','?')}",
+        f"pattern {snap.get('pattern','?')}",
         f"regime {snap.get('regime')}",
         f"bias {snap.get('bias')}",
     ]

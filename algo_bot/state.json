@@ -1,6 +1,88 @@
 {
-  "open_trades": [],
+  "open_trades": [
+    {
+      "symbol": "BTCUSD",
+      "tf": "15m",
+      "side": "SHORT",
+      "entry": 76968.0,
+      "stop_loss": 77429.808,
+      "take_profit": 76044.384,
+      "qty_btc": 0.0036910262588466156,
+      "opened_at": "2026-11-03T09:43:08.660960+00:00",
+      "confidence": 0.484039000257049,
+      "entry_style": "learning atr short",
+      "model_source": "disk",
+      "trial": true
+    },
+    {
+      "symbol": "BTCUSD",
+      "tf": "4h",
+      "side": "SHORT",
+      "entry": 76968.0,
+      "stop_loss": 77763.12857142858,
+      "take_profit": 75377.74285714286,
+      "qty_btc": 0.002143735636971218,
+      "opened_at": "2026-11-03T09:43:10.606402+00:00",
+      "confidence": 0.5117804936015491,
+      "entry_style": "learning atr short",
+      "model_source": "disk",
+      "trial": true
+    },
+    {
+      "symbol": "ETHUSD",
+      "tf": "15m",
+      "side": "SHORT",
+      "entry": 2265.65,
+      "stop_loss": 2266.58,
+      "take_profit": 2251.0,
+      "qty_btc": 0.7523427954650782,
+      "opened_at": "2026-11-03T09:43:11.756591+00:00",
+      "confidence": 0.5401433264525648,
+      "entry_style": "resistance fade",
+      "model_source": "disk",
+      "trial": false
+    },
+    {
+      "symbol": "ETHUSD",
+      "tf": "1h",
+      "side": "SHORT",
+      "entry": 2265.65,
+      "stop_loss": 2280.594285714286,
+      "take_profit": 2235.7614285714285,
+      "qty_btc": 0.11406001512109852,
+      "opened_at": "2026-11-03T09:43:12.808284+00:00",
+      "confidence": 0.46609175702573596,
+      "entry_style": "learning atr short",
+      "model_source": "disk",
+      "trial": false
+    },
+    {
+      "symbol": "SOLUSD",
+      "tf": "15m",
+      "side": "LONG",
+      "entry": 92.307,
+      "stop_loss": 91.753158,
+      "take_profit": 93.41468400000001,
+      "qty_btc": 3.077674597710981,
+      "opened_at": "2026-11-03T09:43:14.859941+00:00",
+      "confidence": 0.5112026087914611,
+      "entry_style": "learning atr long",
+      "model_source": "disk",
+      "trial": true
+    }
+  ],
   "history": [],
-  "last_run_utc": null,
-  "last_run_source": null
+  "last_run_utc": "2026-11-03T09:43:16Z",
+  "last_run_source": "paper_bot",
+  "last_signals": [
+    {"symbol": "BTCUSD", "tf": "15m", "side": "SHORT", "long_p": 0.442, "short_p": 0.484, "price": 76968.0, "trial": true, "impulse_down": false, "style": "learning atr short"},
+    {"symbol": "BTCUSD", "tf": "1h", "side": null, "long_p": 0.29, "short_p": 0.25, "price": 76968.0, "trial": false, "impulse_down": false, "style": null},
+    {"symbol": "BTCUSD", "tf": "4h", "side": "SHORT", "long_p": 0.464, "short_p": 0.512, "price": 76968.0, "trial": true, "impulse_down": false, "style": "learning atr short"},
+    {"symbol": "ETHUSD", "tf": "15m", "side": "SHORT", "long_p": 0.395, "short_p": 0.54, "price": 2265.65, "trial": false, "impulse_down": false, "style": "resistance fade"},
+    {"symbol": "ETHUSD", "tf": "1h", "side": "SHORT", "long_p": 0.369, "short_p": 0.466, "price": 2265.65, "trial": false, "impulse_down": false, "style": "learning atr short"},
+    {"symbol": "ETHUSD", "tf": "4h", "side": null, "long_p": 0.369, "short_p": 0.3, "price": 2265.65, "trial": false, "impulse_down": false, "style": null},
+    {"symbol": "SOLUSD", "tf": "15m", "side": "LONG", "long_p": 0.511, "short_p": 0.464, "price": 92.307, "trial": true, "impulse_down": false, "style": "learning atr long"},
+    {"symbol": "SOLUSD", "tf": "1h", "side": null, "long_p": 0.145, "short_p": 0.207, "price": 92.307, "trial": false, "impulse_down": false, "style": null},
+    {"symbol": "SOLUSD", "tf": "4h", "side": null, "long_p": 0.541, "short_p": 0.447, "price": 92.307, "trial": false, "impulse_down": true, "style": null}
+  ]
 }

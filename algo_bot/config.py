@@ -1,9 +1,11 @@
 """
 algo_bot/config.py
 Paper-trading + model thresholds.
+
+PAPER_LEARNING_MODE=True → take more trades (including wrong ones) so we
+build history, see failure modes, and improve. This is intentional.
 """
 
-# Symbols / TFs scanned by paper bot
 PAPER_TRADE_SYMBOLS = ["BTCUSD", "ETHUSD", "SOLUSD"]
 
 TIMEFRAMES = {
@@ -28,16 +30,17 @@ TIMEFRAMES = {
 }
 
 K_PROFIT = 2.0
-K_STOP = 2.0
+K_STOP = 1.5
 
-# Slightly softer so borderline but real edges can fire (impulse path has its own 0.48 floor)
-MIN_BUY_PROBA = 0.54
-MIN_SELL_PROBA = 0.54
-MIN_EDGE = 0.10
+# LEARNING MODE — lower bar so paper bot actually opens trades
+PAPER_LEARNING_MODE = True
+MIN_BUY_PROBA = 0.45
+MIN_SELL_PROBA = 0.45
+MIN_EDGE = 0.05
 
-FORCE_DAILY_TRIAL = False
-MIN_TRIAL_PROBA = 0.55
-CLOSE_TRIAL_AGAINST_SMA = True
+FORCE_DAILY_TRIAL = True
+MIN_TRIAL_PROBA = 0.42
+CLOSE_TRIAL_AGAINST_SMA = False
 
 ROUND_TRIP_COST_PCT = 0.00118
 MIN_LABEL_MOVE_PCT = 0.00150
@@ -50,7 +53,8 @@ LEVERAGE = 10.0
 USD_INR = 88.0
 RISK_FRACTION = 0.01
 
-NEWS_BLACKOUT = True
+# Paper: don't block all day on news
+NEWS_BLACKOUT = False
 NEWS_MINUTES_BEFORE = 90
 NEWS_MINUTES_AFTER = 30
 

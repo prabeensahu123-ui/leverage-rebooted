@@ -1,96 +1,39 @@
 """
 algo_bot/config.py
-Single source of truth for the bot and the dashboard.
-Focused TFs only: 15m, 1h, 4h (less noise).
+Paper-trading + model thresholds.
 """
 
-SYMBOL = "BTCUSD"
+# Symbols / TFs scanned by paper bot
+PAPER_TRADE_SYMBOLS = ["BTCUSD", "ETHUSD", "SOLUSD"]
 
-TRADE_SYMBOLS = [
-    "BTCUSD",
-    "ETHUSD",
-    "SOLUSD",
-    "XAUTUSD",
-    "PAXGUSD",
-]
-
-PAPER_TRADE_SYMBOLS = [
-    "BTCUSD",
-    "ETHUSD",
-    "SOLUSD",
-]
-
-ASSET_LABELS = {
-    "BTCUSD": "BTC",
-    "ETHUSD": "ETH",
-    "SOLUSD": "SOL",
-    "XAUTUSD": "XAUT",
-    "PAXGUSD": "PAXG",
-}
-
-MODE = "PAPER"
-
-# Only 15m / 1h / 4h — 30m and Daily removed
 TIMEFRAMES = {
     "15m": {
         "resolution": "15m",
-        "days": 30,
-        "max_holding_bars": 32,
-        "label": "15 Minutes",
-        "hold": "~8h",
+        "days": 21,
+        "max_holding_bars": 16,
         "trade_enabled": True,
-        "max_trades_per_day": 3,
     },
     "1h": {
         "resolution": "1h",
-        "days": 90,
+        "days": 60,
         "max_holding_bars": 24,
-        "label": "1 Hour",
-        "hold": "~24h",
         "trade_enabled": True,
-        "max_trades_per_day": 2,
     },
     "4h": {
         "resolution": "4h",
-        "days": 180,
+        "days": 120,
         "max_holding_bars": 18,
-        "label": "4 Hours",
-        "hold": "~3d",
         "trade_enabled": True,
-        "max_trades_per_day": 1,
-    },
-}
-
-DASHBOARD_TIMEFRAMES = {
-    "15m": {
-        "resolution": "15m",
-        "days": 30,
-        "max_holding_bars": 32,
-        "label": "15m",
-        "hold": "~8h",
-    },
-    "1h": {
-        "resolution": "1h",
-        "days": 90,
-        "max_holding_bars": 24,
-        "label": "1h",
-        "hold": "~24h",
-    },
-    "4h": {
-        "resolution": "4h",
-        "days": 180,
-        "max_holding_bars": 18,
-        "label": "4h",
-        "hold": "~3d",
     },
 }
 
 K_PROFIT = 2.0
 K_STOP = 2.0
 
-MIN_BUY_PROBA = 0.56
-MIN_SELL_PROBA = 0.56
-MIN_EDGE = 0.15
+# Slightly softer so borderline but real edges can fire (impulse path has its own 0.48 floor)
+MIN_BUY_PROBA = 0.54
+MIN_SELL_PROBA = 0.54
+MIN_EDGE = 0.10
 
 FORCE_DAILY_TRIAL = False
 MIN_TRIAL_PROBA = 0.55

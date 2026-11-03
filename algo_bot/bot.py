@@ -42,7 +42,6 @@ def _load_state():
         try:
             with open(STATE_FILE) as f:
                 st = json.load(f)
-            # normalize: open_trades always a list
             ot = st.get("open_trades", [])
             if isinstance(ot, dict):
                 ot = list(ot.values()) if ot else []
@@ -127,7 +126,6 @@ def _check_exit(trade: dict) -> dict | None:
 
 
 def _manage_open_trades(state: dict) -> int:
-    """Close any open trades that hit SL/TP. Returns number closed."""
     still_open = []
     closed_n = 0
     for t in state.get("open_trades", []):
@@ -151,12 +149,10 @@ def run_once():
     print(f"[Bot] once @ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     state = _load_state()
 
-    # 1) Manage exits first
     closed_n = _manage_open_trades(state)
     if closed_n:
         print(f"[Bot] closed {closed_n} trade(s)")
 
-    # 2) Scan for new entries (model + technical filters inside get_signal)
     signals = []
     for sym in PAPER_TRADE_SYMBOLS:
         for tf_name, tf in TIMEFRAMES.items():
@@ -167,15 +163,21 @@ def run_once():
                 continue
             signals.append((sym, tf_name, sig))
             side = sig.get("side")
+            imp = ""
+            if sig.get("impulse_down"):
+                imp = " IMPULSE_DOWN"
+            elif sig.get("impulse_up"):
+                imp = " IMPULSE_UP"
+            if sig.get("impulse_used"):
+                imp += "+entry"
             print(
                 f"  {sym} {tf_name}: {side or 'HOLD'} "
                 f"L={sig.get('long_proba', 0):.2f} S={sig.get('short_proba', 0):.2f} "
                 f"px={sig.get('price', 0):.1f} veto={sig.get('veto_reason') or '-'} "
-                f"src={sig.get('model_source', '?')}"
+                f"src={sig.get('model_source', '?')}{imp}"
             )
             if not side:
                 continue
-            # one open position per symbol+tf
             if any(
                 t.get("symbol") == sym and t.get("tf") == tf_name
                 for t in state["open_trades"]
@@ -198,35 +200,29 @@ def run_once():
             notify_trade_opened(
                 {
                     "timeframe": tf_name,
-                    "side": side,
-                    "entry": trade["entry"],
-                    "take_profit": trade["take_profit"],
-                    "stop_loss": trade["stop_loss"],
-                    "confidence": trade.get("confidence", 0),
+                    **trade,
                 }
             )
             print(f"    -> OPENED paper {side} @ {trade['entry']}")
 
     _save_state(state)
     print(f"[Bot] open trades: {len(state['open_trades'])}")
-    return signals
+    return state
 
 
-def show_status():
+def status():
     state = _load_state()
     print(f"Open trades: {len(state.get('open_trades', []))}")
     for t in state.get("open_trades", []):
         print(
-            f"  {t.get('symbol')} {t.get('tf')} {t.get('side')} "
-            f"entry={t.get('entry')} SL={t.get('stop_loss')} TP={t.get('take_profit')}"
+            f"  {t.get('symbol')} {t.get('tf')} {t.get('side')} @ {t.get('entry')} "
+            f"SL={t.get('stop_loss')} TP={t.get('take_profit')}"
         )
-    if is_configured():
-        notify_status(len(state.get("open_trades", [])))
 
 
-def show_performance():
+def performance():
     state = _load_state()
-    hist = state.get("history", [])
+    hist = state.get("history") or []
     print(f"Closed trades: {len(hist)}")
     if not hist:
         print("No history yet")
@@ -237,7 +233,7 @@ def show_performance():
     print(f"Avg PnL: {sum(pnls) / len(pnls):+.2f}%  Sum: {sum(pnls):+.2f}%")
 
 
-def start():
+def start_loop():
     print(f"[Bot] starting loop every {CHECK_INTERVAL_MINUTES} min (Ctrl+C to stop)")
     try:
         while True:
@@ -249,15 +245,14 @@ def start():
 
 if __name__ == "__main__":
     import sys
-
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "once"
+    cmd = (sys.argv[1] if len(sys.argv) > 1 else "once").lower()
     if cmd == "once":
         run_once()
     elif cmd == "start":
-        start()
+        start_loop()
     elif cmd == "status":
-        show_status()
+        status()
     elif cmd == "performance":
-        show_performance()
+        performance()
     else:
         print("Usage: python -m algo_bot.bot once|start|status|performance")

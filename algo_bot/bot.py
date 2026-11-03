@@ -6,6 +6,7 @@ Commands: once | start | status | performance
 - Opens new paper trades from model + technical filters (chart/regime/structure)
 - Every cycle checks open trades for SL / TP hits and closes them
 - Telegram notify on open and close (if secrets set)
+- LEARNING MODE: take more trades, log every signal snapshot into state.json
 """
 
 from __future__ import annotations
@@ -74,7 +75,6 @@ def _append_trade_log(row: dict):
 
 
 def _check_exit(trade: dict) -> dict | None:
-    """Return close result if SL or TP hit on last price, else None."""
     sym = trade.get("symbol")
     side = trade.get("side")
     entry = float(trade.get("entry") or 0)
@@ -146,7 +146,7 @@ def _manage_open_trades(state: dict) -> int:
 
 
 def run_once():
-    print(f"[Bot] once @ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"[Bot] once @ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} | LEARNING MODE")
     state = _load_state()
 
     closed_n = _manage_open_trades(state)
@@ -170,6 +170,8 @@ def run_once():
                 imp = " IMPULSE_UP"
             if sig.get("impulse_used"):
                 imp += "+entry"
+            if sig.get("trial_used"):
+                imp += " TRIAL"
             print(
                 f"  {sym} {tf_name}: {side or 'HOLD'} "
                 f"L={sig.get('long_proba', 0):.2f} S={sig.get('short_proba', 0):.2f} "
@@ -195,16 +197,30 @@ def run_once():
                 "confidence": sig.get("confidence"),
                 "entry_style": sig.get("entry_style"),
                 "model_source": sig.get("model_source"),
+                "trial": bool(sig.get("trial_used")),
             }
             state["open_trades"].append(trade)
-            notify_trade_opened(
-                {
-                    "timeframe": tf_name,
-                    **trade,
-                }
-            )
-            print(f"    -> OPENED paper {side} @ {trade['entry']}")
+            notify_trade_opened({"timeframe": tf_name, **trade})
+            print(f"    -> OPENED paper {side} @ {trade['entry']} style={trade.get('entry_style')}")
 
+    state["last_run_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    state["last_run_source"] = "paper_bot"
+    state["last_signals"] = [
+        {
+            "symbol": sym,
+            "tf": tf_name,
+            "side": sig.get("side"),
+            "long_p": round(float(sig.get("long_proba") or 0), 3),
+            "short_p": round(float(sig.get("short_proba") or 0), 3),
+            "price": sig.get("price"),
+            "veto": sig.get("veto_reason"),
+            "impulse_down": bool(sig.get("impulse_down")),
+            "impulse_up": bool(sig.get("impulse_up")),
+            "trial": bool(sig.get("trial_used")),
+            "style": sig.get("entry_style"),
+        }
+        for sym, tf_name, sig in signals
+    ]
     _save_state(state)
     print(f"[Bot] open trades: {len(state['open_trades'])}")
     return state

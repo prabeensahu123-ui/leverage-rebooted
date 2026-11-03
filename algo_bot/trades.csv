@@ -1,0 +1,2 @@
+closed_at,symbol,tf,side,entry,exit_price,stop_loss,take_profit,pnl_pct,win,exit_reason,opened_at
+2026-11-03T11:51:09.658319+00:00,ETHUSD,15m,SHORT,2265.65,2266.95,2266.58,2251.0,-0.057,False,stop_loss,2026-11-03T09:43:11.756591+00:00

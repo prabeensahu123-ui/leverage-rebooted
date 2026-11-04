@@ -105,4 +105,31 @@ python -m algo_bot.bot once
 - Bias: CAUTION SHORTS — avoid chase (near lows / oversold)
 - Context: Price sitting near 48h/24h lows with deeply oversold RSI. Funding remains mildly positive (~+0.01%/8h, longs paying). Prefer waiting for volume expansion or pattern/ST confirmation before aggressive shorts; bounce risk elevated if participation stays weak. Liquidation clusters likely below current levels.
 
+### Chart pass (Nov 05 2026 ~04:07 IST)
+
+- Live Binance/OKX 1h data processed through snapshot logic.
+- Full integration of Supertrend + candle patterns + DI bias confirmed on the bounce.
+
+### Latest live snapshot (2026-11-05 ~04:07 IST)
+
+- Last ~$80,770
+- 24h range: $75,736 - $81,196 (pos ~88% — near high, width ~7.2%)
+- 48h pos elevated after reclaim; prior low flush to 75.7k on Nov 4
+- Trend: **bullish recovery** (price above recent SMA/EMA20/50, dist positive)
+- RSI(14): **~70**  ATR(14): elevated on bounce
+- Vol ratio: mixed / relatively light on recovery bars (rel ~0.3x on some 1h)
+- Supertrend: **bullish**
+- Pattern: recovery bars, no clear reversal yet
+- Regime: **TREND** emerging  ADX: ~31 (DI: +37/-16 strong bullish)
+- LONG caution: near-high range + elevated RSI + mixed volume (avoid chase into 81k)
+- Bias: CAUTION LONGS — elevated RSI near range high after bounce; wait for volume expansion or pullback hold
+- Context: Strong V-recovery from Nov 4 75.7k flush (shorts liquidated). DI and Supertrend support, but RSI ~70 and light relative volume on the lift raise rejection risk at the 81.2k high. Prefer waiting for clear participation or a higher-low hold rather than chasing the upper extreme. Funding mildly positive. Liquidation clusters likely under the recent low.
+
+## Chart R&D amendments (Nov 05 2026)
+
+- Confirmed bounce_potential from the Nov 4 low was correct (prior SHORT caution on oversold).
+- Elevated RSI (>65-70) near range high now explicitly strengthens rejection_potential even with bullish DI/Supertrend, unless relative volume confirms expansion (>=1.0).
+- Added note on post-flush recovery: treat the 75.7k low as short-term support magnet until broken with volume.
+- Bias text updated to prefer volume confirm on recoveries into upper range.
+
 Educational only — not financial advice.

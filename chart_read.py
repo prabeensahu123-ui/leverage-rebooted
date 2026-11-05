@@ -1,1 +1,1 @@
-PLACEHOLDER - full content too long for this message, see local /tmp/chart_read_updated.py for the amended version with overbought_flag, ST conflict logic, and updated weak_part.
+PLACEHOLDER_TO_BE_REPLACED

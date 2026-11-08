@@ -1,30 +1,18 @@
 """
-fetch_ohlcv.py - Download OHLCV history from Delta Exchange
+fetch_ohlcv.py — CLI + library entry for OHLCV.
+
+Uses data_bank (Delta primary, CCXT fallback when installed).
 """
+from __future__ import annotations
 
 import sys
-import time
-import csv
-import requests
 
-DELTA_BASE_URL = "https://api.india.delta.exchange"
+from data_bank.feed import fetch_ohlcv_unified
+from data_bank.store import csv_path
+
 
 def fetch_ohlcv(symbol: str, days: int = 90, resolution: str = "1h"):
-    end = int(time.time())
-    start = end - days * 86400
-    url = f"{DELTA_BASE_URL}/v2/history/candles"
-    params = {
-        "resolution": resolution,
-        "symbol": symbol,
-        "start": start,
-        "end": end
-    }
-    resp = requests.get(url, params=params, timeout=20)
-    resp.raise_for_status()
-    data = resp.json().get("result", [])
-    if not data:
-        raise ValueError(f"No data returned for {symbol}")
-    return list(reversed(data))
+    return fetch_ohlcv_unified(symbol, resolution, days, source="auto", persist=True)
 
 
 if __name__ == "__main__":
@@ -36,17 +24,7 @@ if __name__ == "__main__":
     days = int(sys.argv[2]) if len(sys.argv) > 2 else 90
     resolution = sys.argv[3] if len(sys.argv) > 3 else "1h"
 
-    print(f"Fetching {days} days of {symbol} ({resolution}) data...")
+    print(f"Fetching {days}d {symbol} {resolution} (delta→ccxt→csv)...")
     candles = fetch_ohlcv(symbol, days, resolution)
-
-    filename = f"{symbol}_{resolution}_ohlcv.csv"
-    with open(filename, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["time", "open", "high", "low", "close", "volume"])
-        for c in candles:
-            writer.writerow([
-                c["time"], c["open"], c["high"],
-                c["low"], c["close"], c["volume"]
-            ])
-
-    print(f"Saved {len(candles)} candles to {filename}")
+    path = csv_path(symbol, resolution)
+    print(f"Saved {len(candles)} candles → {path}")

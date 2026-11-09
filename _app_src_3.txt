@@ -1,0 +1,100 @@
+            sl = entry * (1.0 - default_dist)
+            sl_source = "ATR / default BELOW"
+        stop_dist = (entry - sl) / entry
+        tp = entry * (1.0 + stop_dist * rr)
+    else:
+        liq = cr.get("liq_point_above")
+        if liq and float(liq) > 0 and float(liq) > entry:
+            cand = float(liq) * 1.002
+            dist = (cand - entry) / entry
+            if 0.004 <= dist <= 0.08:
+                sl = cand
+                sl_source = "liq peak ABOVE"
+        if sl is None:
+            sl = entry * (1.0 + default_dist)
+            sl_source = "ATR / default ABOVE"
+        stop_dist = (sl - entry) / entry
+        tp = entry * (1.0 - stop_dist * rr)
+
+    risk_usd = float(equity) * (float(risk_pct) / 100.0)
+    if stop_dist < 1e-8:
+        out["notes"].append("Stop too close")
+        return out
+    notional = risk_usd / stop_dist
+    margin = notional / max(float(leverage), 1.0)
+    if margin > float(equity):
+        margin = float(equity)
+        notional = margin * max(float(leverage), 1.0)
+        risk_usd = notional * stop_dist
+        out["notes"].append("Margin capped at equity")
+
+    out.update({
+        "ok": True,
+        "entry": round(entry, 2),
+        "stop": round(sl, 2),
+        "tp": round(tp, 2),
+        "stop_dist_pct": round(stop_dist * 100.0, 3),
+        "risk_usd": round(risk_usd, 2),
+        "notional": round(notional, 2),
+        "margin": round(margin, 2),
+        "sl_source": sl_source,
+        "rr": rr,
+    })
+    return out
+
+
+ticker = fetch_ticker(symbol)
+price = float(ticker.get("close", ticker.get("mark_price", 0)) or 0)
+chg24 = float(ticker.get("price_change_24h", 0) or 0) * 100
+name = LABELS.get(symbol, symbol)
+funding_raw = ticker.get("funding_rate")
+funding_pct = None
+if funding_raw is not None:
+    try:
+        fr = float(funding_raw)
+        funding_pct = fr * 100.0 if abs(fr) < 0.05 else fr
+    except Exception:
+        pass
+
+if price > 0:
+    st.markdown("## %s  $%s" % (name, "{:,.2f}".format(price)))
+    st.markdown("%s%.2f%% (24h)" % ("+" if chg24 >= 0 else "", chg24))
+else:
+    st.warning("Price unavailable")
+
+h1 = fetch_candles(symbol, "1h", 7)
+chg1 = chg4 = None
+rsi_1h = None
+if h1 and len(h1) >= 5:
+    c = np.array([x["close"] for x in h1], float)
+    if c[-2] > 0:
+        chg1 = float((c[-1] - c[-2]) / c[-2] * 100)
+    if len(c) >= 5 and c[-5] > 0:
+        chg4 = float((c[-1] - c[-5]) / c[-5] * 100)
+    rsi_1h = rsi_from_closes(c)
+
+st.caption(
+    "Overview — 1h: %s · ~4h: %s · 24h: %.2f · Funding: %s · RSI(1h)~: %s"
+    % (
+        ("%.2f" % chg1) if chg1 is not None else "—",
+        ("%.2f" % chg4) if chg4 is not None else "—",
+        chg24,
+        ("%.4f%%" % funding_pct) if funding_pct is not None else "—",
+        ("%.1f" % rsi_1h) if rsi_1h is not None else "—",
+    )
+)
+if funding_pct is not None and funding_regime:
+    reg = funding_regime(funding_pct)
+    st.info("**%s** — %s" % (reg.replace("_", " "), REGIME_BIAS.get(reg, "")))
+
+if h1 and HAS_PLOTLY and len(h1) > 10:
+    st.markdown("#### 1h Chart")
+    closes_arr = np.array([c["close"] for c in h1], float)
+    times = [datetime.fromtimestamp(c.get("time", 0), tz=timezone.utc) for c in h1]
+    fig = go.Figure(data=[go.Candlestick(
+        x=times, open=[c.get("open", c["close"]) for c in h1],
+        high=[c["high"] for c in h1], low=[c["low"] for c in h1],
+        close=closes_arr, name=name,
+    )])
+    if len(closes_arr) >= 20:
+        sma20 = np.convolve(closes_arr, np.ones(20) / 20, mode="valid")

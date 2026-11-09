@@ -19,9 +19,9 @@ st.markdown("---")
 st.subheader("Trade analysis · Technical vs Confluence")
 st.caption(
     "Below the 6-point confluence score. Candles cache ~60s. "
-    "**Tech bias** = price change + RSI (Wilder) + SMA trend + MACD. "
-    "**Confidence %** = how aligned those indicators are (0–100; not a win-rate promise). "
-    "🟢 LONG · 🔴 SHORT."
+    "**Tech bias** = change + RSI + SMA + MACD, then **RSI×ADX gate**. "
+    "ADX<18 chop→HOLD; RSI<25+ADX≥30+downtrend blocks LONG; RSI>75+ADX≥30+uptrend blocks SHORT. "
+    "Confidence 0–100 is alignment, not win-rate. 🟢 LONG · 🔴 SHORT."
 )
 ta_rows = []
 for tf_key in ("15m", "1h", "4h"):
@@ -29,8 +29,9 @@ for tf_key in ("15m", "1h", "4h"):
         ta_rows.append(build_tf_row(symbol, tf_key, st.session_state.conf_result))
     except Exception:
         ta_rows.append({
-            "TF": CONF_TFS[tf_key]["label"], "Chg %": "—", "RSI": "—", "Trend": "—", "MACD": "—",
-            "Tech bias": "—", "Confidence %": 0, "Confluence / Liq": "—", "Reconcile": "err",
+            "TF": CONF_TFS[tf_key]["label"], "Chg %": "—", "RSI": "—", "ADX": "—", "+DI/-DI": "—",
+            "Trend": "—", "MACD": "—", "Tech bias": "—", "Confidence %": 0, "RSI×ADX gate": "—",
+            "Confluence / Liq": "—", "Reconcile": "err",
         })
 st.dataframe(ta_rows, use_container_width=True, hide_index=True)
 if st.session_state.conf_result:

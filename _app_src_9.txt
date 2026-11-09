@@ -1,0 +1,79 @@
+        value=20.0, min_value=1.0, step=5.0, key="plan_eq",
+        help="Money allocated to THIS trade. Risk $ = capital × risk %. Not necessarily full account equity.",
+    )
+with c_risk:
+    plan_risk = st.number_input(
+        "Risk % of capital",
+        value=1.0, min_value=0.25, max_value=5.0, step=0.25, key="plan_risk",
+        help="If stop hits, you lose about this % of the capital above. 1% is conservative; above 2% is aggressive for small accounts.",
+    )
+with c_lev:
+    plan_lev = st.number_input(
+        "Leverage",
+        value=10.0, min_value=1.0, max_value=50.0, step=1.0, key="plan_lev",
+        help="Exchange leverage. Higher leverage = less margin required for same notional, but liquidation is closer.",
+    )
+
+c_side, c_rr = st.columns(2)
+with c_side:
+    _opts = ["LONG", "SHORT", "HOLD"]
+    _idx = _opts.index(_auto_side) if _auto_side in _opts else 2
+    plan_side = st.selectbox(
+        "Side",
+        options=_opts, index=_idx, key="plan_side",
+        help="LONG or SHORT. If you already scored confluence, this defaults to that side. HOLD = no plan.",
+    )
+with c_rr:
+    plan_rr = st.number_input(
+        "Reward : Risk (TP multiple)",
+        value=2.0, min_value=1.0, max_value=5.0, step=0.5, key="plan_rr",
+        help="Take-profit distance as multiple of stop distance. 2.0 = TP is 2× as far as SL (classic 1:2 R:R).",
+    )
+
+plan = auto_trade_plan(
+    price=price,
+    side=plan_side,
+    conf_result=st.session_state.conf_result,
+    candles_1h=h1,
+    equity=plan_eq,
+    risk_pct=plan_risk,
+    leverage=plan_lev,
+    rr=plan_rr,
+)
+
+if plan.get("ok"):
+    if plan["side"] == "LONG":
+        st.success("**LONG plan** · SL from: %s" % plan["sl_source"])
+    else:
+        st.error("**SHORT plan** · SL from: %s" % plan["sl_source"])
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Entry", "$%s" % "{:,.2f}".format(plan["entry"]))
+    m2.metric("Stop loss", "$%s" % "{:,.2f}".format(plan["stop"]))
+    m3.metric("Take profit", "$%s" % "{:,.2f}".format(plan["tp"]))
+    m4.metric("Stop dist", "%.2f%%" % plan["stop_dist_pct"])
+    n1, n2, n3 = st.columns(3)
+    n1.metric("Max loss (risk)", "$%.2f" % plan["risk_usd"])
+    n2.metric("Notional", "$%s" % "{:,.0f}".format(plan["notional"]))
+    n3.metric("Margin @ %.0fx" % plan_lev, "$%s" % "{:,.0f}".format(plan["margin"]))
+    st.caption(
+        "If SL hits first → lose ~**$%.2f** (%.1f%% of capital). "
+        "R:R **1:%.1f**. Margin is what you actually put up; notional is exposure."
+        % (plan["risk_usd"], plan_risk, plan.get("rr") or plan_rr)
+    )
+    if plan.get("notes"):
+        st.caption(" · ".join(plan["notes"]))
+    if plan_lev >= 20 and plan["stop_dist_pct"] < 0.8:
+        st.warning("High leverage + tight stop — one wick can stop you out.")
+    if plan["margin"] > plan_eq * 0.5:
+        st.warning("This trade uses >50% of your capital as margin — size is aggressive for the account.")
+else:
+    st.info("Plan waiting: %s" % ("; ".join(plan.get("notes") or ["set side LONG/SHORT"])))
+    if not st.session_state.conf_result:
+        st.caption("Tip: score **6-Point Confluence** (liq peaks) so SL can snap to liquidation levels.")
+
+with st.expander("Manual override (old calculator)"):
+    st.caption("Only if you want to force your own entry/stop numbers.")
+    with st.form("size_form"):
+        s1, s2 = st.columns(2)
+        with s1:
+            eq = st.number_input("Account equity (USD)", value=float(plan_eq), step=5.0)

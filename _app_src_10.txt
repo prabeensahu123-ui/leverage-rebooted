@@ -1,3 +1,41 @@
+    )
+    if plan.get("notes"):
+        st.caption(" · ".join(plan["notes"]))
+    if plan_lev >= 20 and plan["stop_dist_pct"] < 0.8:
+        st.warning("High leverage + tight stop — one wick can stop you out.")
+    if plan["margin"] > plan_eq * 0.5:
+        st.warning("This trade uses >50% of your capital as margin — size is aggressive for the account.")
+else:
+    st.info("Plan waiting: %s" % ("; ".join(plan.get("notes") or ["set side LONG/SHORT"])))
+    if not st.session_state.conf_result:
+        st.caption("Tip: score **6-Point Confluence** (liq peaks) so SL can snap to liquidation levels.")
+
+with st.expander("Manual override (old calculator)"):
+    st.caption("Only if you want to force your own entry/stop numbers.")
+    with st.form("size_form"):
+        s1, s2 = st.columns(2)
+        with s1:
+            eq = st.number_input("Account equity (USD)", value=float(plan_eq), step=5.0)
+            risk = st.number_input("Risk % per trade", value=float(plan_risk), step=0.25, format="%.2f")
+            lev = st.number_input("Leverage ", value=float(plan_lev), step=1.0)
+        with s2:
+            _de = float(plan["entry"]) if plan.get("ok") else (float(price) if price else 0.0)
+            _ds = float(plan["stop"]) if plan.get("ok") else 0.0
+            ent = st.number_input("Entry", value=_de, step=1.0)
+            stp = st.number_input("Stop loss", value=_ds, step=1.0)
+        sz_go = st.form_submit_button("Calculate size", use_container_width=True)
+    if sz_go and position_size:
+        mult = 1.0
+        if st.session_state.conf_result:
+            mult = float(st.session_state.conf_result.get("size_mult") or 1.0)
+        ps = position_size(eq, risk * mult, ent, stp, lev)
+        if ps.get("error"):
+            st.error(ps["error"])
+        else:
+            st.write("Risk USD: **%.2f** (after size mult)" % ps["risk_usd"])
+            st.write("Stop distance: **%.3f%%**" % ps["stop_dist_pct"])
+            st.write("Notional: **$%s** · Margin: **$%s**" % ("{:,.0f}".format(ps["notional"]), "{:,.0f}".format(ps["margin"])))
+            st.write("Approx liq distance: **%.1f%%**" % ps["liq_dist_approx_pct"])
             if ps.get("warning"):
                 st.warning(ps["warning"])
             else:

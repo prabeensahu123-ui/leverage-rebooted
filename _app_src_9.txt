@@ -59,21 +59,3 @@ if plan.get("ok"):
         "If SL hits first → lose ~**$%.2f** (%.1f%% of capital). "
         "R:R **1:%.1f**. Margin is what you actually put up; notional is exposure."
         % (plan["risk_usd"], plan_risk, plan.get("rr") or plan_rr)
-    )
-    if plan.get("notes"):
-        st.caption(" · ".join(plan["notes"]))
-    if plan_lev >= 20 and plan["stop_dist_pct"] < 0.8:
-        st.warning("High leverage + tight stop — one wick can stop you out.")
-    if plan["margin"] > plan_eq * 0.5:
-        st.warning("This trade uses >50% of your capital as margin — size is aggressive for the account.")
-else:
-    st.info("Plan waiting: %s" % ("; ".join(plan.get("notes") or ["set side LONG/SHORT"])))
-    if not st.session_state.conf_result:
-        st.caption("Tip: score **6-Point Confluence** (liq peaks) so SL can snap to liquidation levels.")
-
-with st.expander("Manual override (old calculator)"):
-    st.caption("Only if you want to force your own entry/stop numbers.")
-    with st.form("size_form"):
-        s1, s2 = st.columns(2)
-        with s1:
-            eq = st.number_input("Account equity (USD)", value=float(plan_eq), step=5.0)

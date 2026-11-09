@@ -1,0 +1,106 @@
+"""Leverage Signal — core + Funding Confluence Matrix + live chart + paper trading."""
+import sys, os
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+import streamlit as st
+import requests
+import numpy as np
+import time
+import json
+from datetime import datetime, timezone, timedelta
+
+try:
+    import plotly.graph_objects as go
+    HAS_PLOTLY = True
+except Exception:
+    HAS_PLOTLY = False
+
+st.set_page_config(page_title="Leverage Signal", layout="centered", initial_sidebar_state="collapsed")
+IST = timezone(timedelta(hours=5, minutes=30))
+def now_ist():
+    return datetime.now(IST)
+
+DELTA = "https://api.india.delta.exchange"
+ASSETS = ["BTCUSD", "ETHUSD", "SOLUSD", "XAUTUSD", "PAXGUSD"]
+LABELS = {"BTCUSD": "BTC", "ETHUSD": "ETH", "SOLUSD": "SOL", "XAUTUSD": "XAUT", "PAXGUSD": "PAXG"}
+STATE_FILE = "algo_bot/state.json"
+TRADE_LOG = "algo_bot/trades.csv"
+
+CONF_TFS = {
+    "15m": {"resolution": "15m", "days": 5, "label": "15 Minutes"},
+    "1h": {"resolution": "1h", "days": 7, "label": "1 Hour"},
+    "4h": {"resolution": "4h", "days": 30, "label": "4 Hours"},
+}
+
+try:
+    from funding_confluence import run_confluence, position_size, funding_regime, REGIME_BIAS
+except Exception as e:
+    run_confluence = None
+    position_size = None
+    funding_regime = None
+    REGIME_BIAS = {}
+    st.error("funding_confluence load failed: %s" % e)
+
+try:
+    from chart_read import snapshot as chart_snapshot, caption as chart_caption
+except Exception:
+    chart_snapshot = None
+    chart_caption = None
+
+if "symbol" not in st.session_state:
+    st.session_state.symbol = "BTCUSD"
+if "conf_result" not in st.session_state:
+    st.session_state.conf_result = None
+if "paper_msg" not in st.session_state:
+    st.session_state.paper_msg = ""
+if "conf_tf" not in st.session_state:
+    st.session_state.conf_tf = "1h"
+if "liq_band_pct" not in st.session_state:
+    st.session_state.liq_band_pct = 2.0
+
+st.markdown("### Leverage Signal")
+st.caption("%s IST · Funding Confluence Matrix v2 + Paper Bot" % now_ist().strftime("%Y-%m-%d %H:%M:%S"))
+
+cols = st.columns(len(ASSETS))
+for col, sym in zip(cols, ASSETS):
+    with col:
+        if st.button(LABELS.get(sym, sym), key="a_%s" % sym, use_container_width=True):
+            st.session_state.symbol = sym
+            st.rerun()
+
+symbol = st.session_state.symbol
+
+@st.cache_data(ttl=20, show_spinner=False)
+def fetch_ticker(s):
+    try:
+        return requests.get("%s/v2/tickers/%s" % (DELTA, s), timeout=8).json().get("result", {})
+    except Exception:
+        return {}
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_candles(s, res, days):
+    end = int(time.time())
+    start = end - days * 86400
+    try:
+        r = requests.get(
+            "%s/v2/history/candles" % DELTA,
+            params={"resolution": res, "symbol": s, "start": start, "end": end},
+            timeout=15,
+        ).json()
+        rows = r.get("result", []) if isinstance(r, dict) else r
+        # Delta returns newest-first; oldest-first needed for RSI/indicators
+        return list(reversed(rows)) if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+def load_paper_state():
+    if not os.path.exists(STATE_FILE):
+        return {"open_trades": [], "history": []}
+    try:
+        with open(STATE_FILE) as f:
+            stt = json.load(f)
+        ot = stt.get("open_trades", [])
+        if isinstance(ot, dict):
+            ot = list(ot.values()) if ot else []

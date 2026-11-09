@@ -1,0 +1,10 @@
+            if ps.get("warning"):
+                st.warning(ps["warning"])
+            else:
+                st.success("Stop is inside approx liquidation band.")
+
+st.markdown("---")
+st.caption("Educational only. Matrix thresholds are rules of thumb, not tested probabilities. Never trade on one signal.")
+if st.button("Refresh data", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()

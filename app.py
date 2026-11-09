@@ -1,5 +1,5 @@
-"""Leverage Signal dashboard — plain multi-part source (no zlib)."""
+"""Leverage Signal dashboard — loads app_body.py (plain source, no zlib)."""
 from pathlib import Path
-_n = 11
-_code = "".join(Path(__file__).with_name(f"_app_src_{i}.txt").read_text() for i in range(_n))
-exec(compile(_code, str(Path(__file__).with_name("app_body.py")), "exec"), {"__name__": "__main__", "__file__": str(Path(__file__).resolve())})
+_body = Path(__file__).with_name("app_body.py")
+_code = _body.read_text(encoding="utf-8")
+exec(compile(_code, str(_body), "exec"), {"__name__": "__main__", "__file__": str(Path(__file__).resolve())})

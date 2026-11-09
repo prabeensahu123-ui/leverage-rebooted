@@ -1,0 +1,46 @@
+| **Nearest peak ABOVE** | Price of the **tallest short-liq bar** just above mark (inside band) | Far peaks outside the band |
+| **Amount ABOVE band** | **Cumulative short-liq** sum from current price → upper band edge (tooltip cumulative, or sum of bars in band) | Full-map total short liq (entire chart) |
+| **Nearest peak BELOW** | Price of the **tallest long-liq bar** just below mark (inside band) | Far peaks outside the band |
+| **Amount BELOW band** | **Cumulative long-liq** sum from current price → lower band edge | Full-map total long liq |
+| **Cum LONG / SHORT lev** | Optional: aggregate leverage of accounts (map curves) — not the same as band amount | Band bar sums |
+
+**Rule:** Peak = nearest strong cluster (SL magnet). Amount = fuel **inside ± band only** — fair long vs short compare.
+            """
+        )
+    st.caption("ABOVE = short liquidations (price up). BELOW = long liquidations (price down). Use **(i)** on each field.")
+    if band_hi is not None:
+        st.caption("Price band: **$%s** ← current → **$%s**" % ("{:,.0f}".format(band_lo), "{:,.0f}".format(band_hi)))
+    la, lb = st.columns(2)
+    with la:
+        st.markdown("**ABOVE** (short-liq fuel) · up to $%s" % ("{:,.0f}".format(band_hi) if band_hi else "—"))
+        f_liq_pt_above = st.number_input(
+            "Nearest strong peak ABOVE (price)",
+            value=0.0, step=1.0, format="%.1f",
+            help="CoinGlass: price of the tallest SHORT-liquidation bar ABOVE current price, inside the ± band. Used as magnet / SL reference for shorts covering. Example: if price is 78375 and a big short-liq wall is at 78775, enter 78775.",
+        )
+        f_liq_amt_above = st.number_input(
+            "Amount in ±%.0f%% ABOVE band (USD / M)" % liq_band,
+            value=0.0, step=1000.0, format="%.0f",
+            help="Sum ONLY the short-liq bars from current price up to +%.0f%%. Use tooltip 'Cumulative Short Liquidation Leverage' at the upper band edge, or add bar amounts inside the band. Do NOT use the full-map total (far right of chart)." % liq_band,
+        )
+    with lb:
+        st.markdown("**BELOW** (long-liq fuel) · down to $%s" % ("{:,.0f}".format(band_lo) if band_lo else "—"))
+        f_liq_pt_below = st.number_input(
+            "Nearest strong peak BELOW (price)",
+            value=0.0, step=1.0, format="%.1f",
+            help="CoinGlass: price of the tallest LONG-liquidation bar BELOW current price, inside the ± band. Used as magnet / SL reference for longs. Example: if price is 78375 and a strong long-liq wall is at 77235, enter 77235.",
+        )
+        f_liq_amt_below = st.number_input(
+            "Amount in ±%.0f%% BELOW band (USD / M)" % liq_band,
+            value=0.0, step=1000.0, format="%.0f",
+            help="Sum ONLY the long-liq bars from current price down to -%.0f%%. Use tooltip 'Cumulative Long Liquidation Leverage' at the lower band edge. Do NOT use the full-map total (far left of chart)." % liq_band,
+        )
+    st.markdown("##### Cumulative leverage (accounts)")
+    with st.expander("ℹ️ Cumulative LONG/SHORT leverage — what is this?", expanded=False):
+        st.markdown(
+            """
+Optional context — **not** the same as “Amount in ± band”.
+
+- **Cumulative LONG leverage**: how leveraged long accounts are overall (map / exchange aggregate).
+- **Cumulative SHORT leverage**: same for shorts.
+

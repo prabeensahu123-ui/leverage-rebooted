@@ -1,0 +1,91 @@
+    raw = _tech_score_parts(chg, rsi, trend, macd)
+    tech = _tech_decision(raw)
+    conf_pct = _confidence_pct(raw)
+    conf_side = None
+    conf_side_display = "— (score 6-pt first)"
+    if conf_result:
+        conf_side = conf_result.get("side") or "HOLD"
+        verdict = conf_result.get("verdict") or conf_side
+        ls = conf_result.get("long_score") or 0
+        ss = conf_result.get("short_score") or 0
+        scored_tf = conf_result.get("data_window")
+        conf_side_display = "%s %s · L%d/S%d" % (_color_side(conf_side), verdict, ls, ss)
+        if scored_tf and scored_tf != tf_key:
+            conf_side_display = "%s (scored on %s)" % (conf_side_display, scored_tf)
+    if not conf_result or conf_side is None:
+        reconcile = "—"
+    elif conf_side == "HOLD" or tech == "HOLD":
+        reconcile = "WAIT"
+    elif tech == conf_side:
+        reconcile = "AGREE"
+    else:
+        reconcile = "CONFLICT"
+    return {
+        "TF": cfg["label"],
+        "Chg %": ("%+.2f" % chg) if chg is not None else "—",
+        "RSI": ("%.1f" % rsi) if rsi is not None else "—",
+        "Trend": trend,
+        "MACD": macd,
+        "Tech bias": _color_side(tech),
+        "Confidence %": conf_pct,
+        "Confluence / Liq": conf_side_display,
+        "Reconcile": _color_reconcile(reconcile),
+    }
+
+
+def _atr_pct_from_candles(candles, period=14):
+    if not candles or len(candles) < period + 2:
+        return None
+    trs = []
+    for i in range(1, len(candles)):
+        h = float(candles[i].get("high") or 0)
+        l = float(candles[i].get("low") or 0)
+        pc = float(candles[i - 1].get("close") or 0)
+        if h <= 0 or l <= 0 or pc <= 0:
+            continue
+        trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+    if len(trs) < period:
+        return None
+    atr = float(sum(trs[-period:]) / period)
+    last = float(candles[-1].get("close") or 0)
+    if last <= 0:
+        return None
+    return atr / last * 100.0
+
+
+def auto_trade_plan(price, side, conf_result, candles_1h, equity, risk_pct=1.0, leverage=10.0, rr=2.0):
+    """Capital + side → Entry, SL, TP, notional, margin. Educational only."""
+    out = {
+        "ok": False, "side": side or "HOLD", "entry": 0.0, "stop": 0.0, "tp": 0.0,
+        "stop_dist_pct": 0.0, "risk_usd": 0.0, "notional": 0.0, "margin": 0.0,
+        "sl_source": "—", "notes": [], "leverage": float(leverage), "risk_pct": float(risk_pct),
+    }
+    if not price or price <= 0:
+        out["notes"].append("No live price")
+        return out
+    side = (side or "HOLD").upper()
+    if side not in ("LONG", "SHORT"):
+        out["notes"].append("Pick LONG or SHORT (or score confluence first)")
+        return out
+    entry = float(price)
+    atr_p = _atr_pct_from_candles(candles_1h) if candles_1h else None
+    if atr_p is not None:
+        # stop distance: 1.5x ATR, floor 0.8%, cap 4%
+        default_dist = min(max(0.8, 1.5 * atr_p), 4.0) / 100.0
+        out["notes"].append("ATR(1h) ~%.2f%%" % atr_p)
+    else:
+        default_dist = 0.012  # 1.2%
+        out["notes"].append("ATR n/a — default 1.2% stop")
+
+    sl = None
+    sl_source = "ATR"
+    cr = conf_result or {}
+    if side == "LONG":
+        liq = cr.get("liq_point_below")
+        if liq and float(liq) > 0 and float(liq) < entry:
+            cand = float(liq) * 0.998
+            dist = (entry - cand) / entry
+            if 0.004 <= dist <= 0.08:
+                sl = cand
+                sl_source = "liq peak BELOW"
+        if sl is None:

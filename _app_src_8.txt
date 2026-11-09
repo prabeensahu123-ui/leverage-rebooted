@@ -1,0 +1,74 @@
+            st.caption("Band amounts: ABOVE > BELOW → more short-liq fuel above (leans long on this point).")
+        elif b > a * 1.15:
+            st.caption("Band amounts: BELOW > ABOVE → more long-liq fuel below (leans short on this point).")
+        else:
+            st.caption("Band amounts roughly balanced — this point is neutral.")
+    lev_rows = [
+        {"Side": "Cumulative LONG leverage", "Value (x)": r.get("cum_long_leverage") or "—"},
+        {"Side": "Cumulative SHORT leverage", "Value (x)": r.get("cum_short_leverage") or "—"},
+    ]
+    st.dataframe(lev_rows, use_container_width=True, hide_index=True)
+    with st.expander("Long checklist"):
+        for h in r["long_hits"]:
+            st.write("•", h)
+    with st.expander("Short checklist"):
+        for h in r["short_hits"]:
+            st.write("•", h)
+
+st.markdown("---")
+st.subheader("Trade analysis · Technical vs Confluence")
+st.caption(
+    "Below the 6-point confluence score. Candles cache ~60s. "
+    "**Tech bias** = price change + RSI (Wilder) + SMA trend + MACD. "
+    "**Confidence %** = how aligned those indicators are (0–100; not a win-rate promise). "
+    "🟢 LONG · 🔴 SHORT."
+)
+ta_rows = []
+for tf_key in ("15m", "1h", "4h"):
+    try:
+        ta_rows.append(build_tf_row(symbol, tf_key, st.session_state.conf_result))
+    except Exception:
+        ta_rows.append({
+            "TF": CONF_TFS[tf_key]["label"], "Chg %": "—", "RSI": "—", "Trend": "—", "MACD": "—",
+            "Tech bias": "—", "Confidence %": 0, "Confluence / Liq": "—", "Reconcile": "err",
+        })
+st.dataframe(ta_rows, use_container_width=True, hide_index=True)
+if st.session_state.conf_result:
+    agrees = sum(1 for r in ta_rows if "AGREE" in str(r.get("Reconcile", "")))
+    conflicts = sum(1 for r in ta_rows if "CONFLICT" in str(r.get("Reconcile", "")))
+    if agrees >= 2:
+        st.success("Multi-TF: technical leans with confluence on **%d/3** windows." % agrees)
+    elif conflicts >= 2:
+        st.warning("Multi-TF: technical **conflicts** confluence on **%d/3** windows — be cautious." % conflicts)
+    else:
+        st.info("Multi-TF: mixed / wait — no strong agreement across 15m·1h·4h.")
+else:
+    st.info("Score confluence above to fill **Confluence / Liq** and **Reconcile**.")
+
+st.markdown("---")
+st.subheader("Auto trade plan (capital → Entry / SL / TP / size)")
+st.caption(
+    "Enter **how much capital** you will use. System suggests entry (live), stop, target (2R), "
+    "and size so loss ≈ risk % of capital. Educational only — not financial advice."
+)
+
+_auto_side = "HOLD"
+if st.session_state.conf_result and st.session_state.conf_result.get("side") in ("LONG", "SHORT"):
+    _auto_side = st.session_state.conf_result.get("side")
+
+with st.expander("ℹ️ How Auto trade plan works", expanded=False):
+    st.markdown(
+        """
+1. Enter **capital you will actually use** on this trade (not full exchange balance unless you size that way).
+2. **Risk %** = max loss if SL hits (default 1% of that capital).
+3. **Leverage** = exchange leverage you will select.
+4. **Side** = LONG or SHORT (auto from confluence if already scored).
+5. System fills **Entry** (live), **SL** (liq peak if scored, else ATR), **TP** (R:R), **notional & margin**.
+
+Educational only — not financial advice. Always verify SL sits before exchange liquidation.
+        """
+    )
+c_eq, c_risk, c_lev = st.columns(3)
+with c_eq:
+    plan_eq = st.number_input(
+        "Capital you will use (USD)",

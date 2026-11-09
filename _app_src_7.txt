@@ -1,0 +1,64 @@
+Leave 0 if you only care about band amounts for scoring. Band amount = liquidation **fuel** near price; this field = how hard accounts are levered.
+            """
+        )
+    cl1, cl2 = st.columns(2)
+    with cl1:
+        f_cum_long_lev = st.number_input(
+            "Cumulative LONG leverage (x)",
+            value=0.0, step=0.1, format="%.2f",
+            help="Optional. Aggregate leverage of open longs from CoinGlass/exchange. Not the ± band bar sum.",
+        )
+    with cl2:
+        f_cum_short_lev = st.number_input(
+            "Cumulative SHORT leverage (x)",
+            value=0.0, step=0.1, format="%.2f",
+            help="Optional. Aggregate leverage of open shorts. Not the ± band bar sum.",
+        )
+    go = st.form_submit_button("Score confluence", use_container_width=True)
+
+if go and run_confluence:
+    share = f_share if f_share > 0 else None
+    above = f_liq_amt_above if f_liq_amt_above > 0 else None
+    below = f_liq_amt_below if f_liq_amt_below > 0 else None
+    res = run_confluence(funding_pct=f_fund, rsi=f_rsi, long_share_pct=share, oi_chg_pct=f_oi_chg, price_chg_pct=f_price_chg, cluster_above=above, cluster_below=below, pa_long=f_pa_long, pa_short=f_pa_short)
+    res["data_window"] = conf_tf
+    res["liq_band_pct"] = liq_band
+    res["band_hi"] = band_hi
+    res["band_lo"] = band_lo
+    res["liq_point_above"] = f_liq_pt_above if f_liq_pt_above > 0 else None
+    res["liq_point_below"] = f_liq_pt_below if f_liq_pt_below > 0 else None
+    res["liq_amt_above"] = above
+    res["liq_amt_below"] = below
+    res["cum_long_leverage"] = f_cum_long_lev if f_cum_long_lev > 0 else None
+    res["cum_short_leverage"] = f_cum_short_lev if f_cum_short_lev > 0 else None
+    if price > 0:
+        if f_liq_pt_above > 0:
+            res["dist_above_pct"] = round((f_liq_pt_above - price) / price * 100.0, 3)
+        if f_liq_pt_below > 0:
+            res["dist_below_pct"] = round((price - f_liq_pt_below) / price * 100.0, 3)
+    st.session_state.conf_result = res
+
+if st.session_state.conf_result:
+    r = st.session_state.conf_result
+    st.markdown("#### Verdict: **%s**" % r["verdict"])
+    st.write("Window: **%s** · Long score: **%d / 6** · Short score: **%d / 6**" % (r.get("data_window") or "—", r["long_score"], r["short_score"]))
+    st.write(r["action"])
+    if r["side"] == "LONG":
+        st.success("Side bias: LONG (size mult %.1fx)" % r["size_mult"])
+    elif r["side"] == "SHORT":
+        st.error("Side bias: SHORT (size mult %.1fx)" % r["size_mult"])
+    else:
+        st.info("Side bias: HOLD")
+    band_lbl = r.get("liq_band_pct")
+    st.markdown("##### Liquidation & leverage context" + ((" (band ±%.0f%%)" % band_lbl) if band_lbl else ""))
+    if r.get("band_lo") and r.get("band_hi"):
+        st.caption("Band used: $%s – $%s" % ("{:,.0f}".format(r["band_lo"]), "{:,.0f}".format(r["band_hi"])))
+    liq_rows = [
+        {"Side": "ABOVE (short liq)", "Nearest peak": r.get("liq_point_above") or "—", "Dist %": r.get("dist_above_pct") if r.get("dist_above_pct") is not None else "—", "Band amount": r.get("liq_amt_above") or "—"},
+        {"Side": "BELOW (long liq)", "Nearest peak": r.get("liq_point_below") or "—", "Dist %": r.get("dist_below_pct") if r.get("dist_below_pct") is not None else "—", "Band amount": r.get("liq_amt_below") or "—"},
+    ]
+    st.dataframe(liq_rows, use_container_width=True, hide_index=True)
+    a = r.get("liq_amt_above") or 0
+    b = r.get("liq_amt_below") or 0
+    if a and b:
+        if a > b * 1.15:

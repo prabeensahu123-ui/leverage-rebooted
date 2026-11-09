@@ -1,0 +1,61 @@
+        fig.add_trace(go.Scatter(x=times[-len(sma20):], y=sma20, mode="lines", name="SMA20", line=dict(color="yellow", width=1)))
+    if len(closes_arr) >= 50:
+        sma50 = np.convolve(closes_arr, np.ones(50) / 50, mode="valid")
+        fig.add_trace(go.Scatter(x=times[-len(sma50):], y=sma50, mode="lines", name="SMA50", line=dict(color="cyan", width=1)))
+    fig.update_layout(height=420, margin=dict(l=10, r=10, t=30, b=10), xaxis_rangeslider_visible=False, template="plotly_dark", title=f"{name} 1h · last {len(h1)} bars + SMAs")
+    st.plotly_chart(fig, use_container_width=True)
+
+if h1 and chart_snapshot:
+    snap = chart_snapshot(h1)
+    if snap:
+        st.markdown("#### Chart Snapshot (1h)")
+        st.code(chart_caption(snap) if chart_caption else str(snap), language=None)
+        if snap.get("long_caution") or snap.get("short_caution") or snap.get("caution"):
+            st.warning("Caution active — see flags above")
+        if snap.get("bounce_potential"):
+            st.info("Bounce potential flagged (low RSI + weak vol)")
+
+st.markdown("---")
+st.subheader("Background Paper Trading")
+st.caption("Model + technical filters (chart caution, regime, structure). GitHub Actions runs every 30 min. Telegram alerts if secrets are set.")
+paper = load_paper_state()
+open_trades = paper.get("open_trades", [])
+hist = paper.get("history", [])
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("Open", len(open_trades))
+with c2:
+    wins = sum(1 for h in hist if h.get("win"))
+    st.metric("Closed", len(hist))
+with c3:
+    wr = ("%.0f%%" % (100.0 * wins / len(hist))) if hist else "—"
+    st.metric("Win rate", wr)
+if open_trades:
+    st.markdown("**Open paper trades**")
+    rows = []
+    for t in open_trades:
+        rows.append({"Asset": LABELS.get(t.get("symbol", ""), t.get("symbol")), "TF": t.get("tf"), "Side": t.get("side"), "Entry": t.get("entry"), "SL": t.get("stop_loss"), "TP": t.get("take_profit"), "Style": t.get("entry_style") or "-"})
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+else:
+    st.write("No open paper trades.")
+if hist:
+    with st.expander("Recent closed trades"):
+        recent = list(reversed(hist[-10:]))
+        st.dataframe([{"Asset": LABELS.get(h.get("symbol", ""), h.get("symbol")), "TF": h.get("tf") or h.get("timeframe"), "Side": h.get("side"), "PnL %": h.get("pnl_pct"), "Reason": h.get("exit_reason"), "Win": h.get("win")} for h in recent], use_container_width=True, hide_index=True)
+if st.button("Run paper check now", use_container_width=True):
+    try:
+        from algo_bot.bot import run_once
+        run_once()
+        st.session_state.paper_msg = "Paper check finished at %s IST" % now_ist().strftime("%H:%M:%S")
+    except Exception as e:
+        st.session_state.paper_msg = "Paper check failed: %s" % e
+    st.rerun()
+if st.session_state.paper_msg:
+    st.info(st.session_state.paper_msg)
+
+st.markdown("---")
+st.subheader("6-Point Confluence Scorer")
+st.caption("From BTC Funding Matrix v2. Pick the data window (15m / 1h / 4h) — price change % and OI change % should match that same window.")
+tf_choice = st.radio("Data window (price change + OI window)", options=list(CONF_TFS.keys()), index=list(CONF_TFS.keys()).index(st.session_state.conf_tf) if st.session_state.conf_tf in CONF_TFS else 1, horizontal=True, key="conf_tf_radio", help="Select 15m, 1h or 4h. Auto price change and RSI load from this timeframe.")
+if tf_choice != st.session_state.conf_tf:
+    st.session_state.conf_tf = tf_choice

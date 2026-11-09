@@ -1,6 +1,14 @@
     raw = _tech_score_parts(chg, rsi, trend, macd)
     tech = _tech_decision(raw)
     conf_pct = _confidence_pct(raw)
+    adx_v = pdi = mdi = None
+    gate = "—"
+    try:
+        from trade_analysis import adx_di_from_candles, apply_rsi_adx_gate
+        adx_v, pdi, mdi = adx_di_from_candles(candles)
+        tech, conf_pct, gate = apply_rsi_adx_gate(tech, conf_pct, rsi, adx_v, pdi, mdi)
+    except Exception:
+        gate = "n/a"
     conf_side = None
     conf_side_display = "— (score 6-pt first)"
     if conf_result:
@@ -20,14 +28,20 @@
         reconcile = "AGREE"
     else:
         reconcile = "CONFLICT"
+    di_txt = "—"
+    if pdi is not None and mdi is not None:
+        di_txt = "+%.0f/-%.0f" % (pdi, mdi)
     return {
         "TF": cfg["label"],
         "Chg %": ("%+.2f" % chg) if chg is not None else "—",
         "RSI": ("%.1f" % rsi) if rsi is not None else "—",
+        "ADX": ("%.1f" % adx_v) if adx_v is not None else "—",
+        "+DI/-DI": di_txt,
         "Trend": trend,
         "MACD": macd,
         "Tech bias": _color_side(tech),
         "Confidence %": conf_pct,
+        "RSI×ADX gate": gate,
         "Confluence / Liq": conf_side_display,
         "Reconcile": _color_reconcile(reconcile),
     }

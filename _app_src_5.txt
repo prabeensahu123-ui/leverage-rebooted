@@ -1,0 +1,41 @@
+    st.rerun()
+conf_tf = st.session_state.conf_tf
+tf_cfg = CONF_TFS[conf_tf]
+tf_candles = fetch_candles(symbol, tf_cfg["resolution"], tf_cfg["days"])
+auto_price_chg = tf_price_change(tf_candles)
+tf_closes = [float(x["close"]) for x in tf_candles] if tf_candles else []
+auto_rsi = rsi_from_closes(tf_closes) if tf_closes else rsi_1h
+st.info("Selected window: **%s** · Auto price change (1 bar): **%s** · RSI(%s)~: **%s**" % (tf_cfg["label"], ("%+.2f%%" % auto_price_chg) if auto_price_chg is not None else "—", conf_tf, ("%.1f" % auto_rsi) if auto_rsi is not None else "—"))
+band_choice = st.radio("Liq compare band (Rule B — same distance both sides)", options=[1.0, 2.0, 3.0], index=[1.0, 2.0, 3.0].index(st.session_state.liq_band_pct) if st.session_state.liq_band_pct in (1.0, 2.0, 3.0) else 1, format_func=lambda x: "±%.0f%%" % x, horizontal=True, key="liq_band_radio", help="Sum CoinGlass liquidation bars inside this %% band above and below price. Fair compare.")
+if band_choice != st.session_state.liq_band_pct:
+    st.session_state.liq_band_pct = band_choice
+    st.rerun()
+liq_band = float(st.session_state.liq_band_pct)
+band_hi = band_lo = None
+if price > 0:
+    band_hi = price * (1.0 + liq_band / 100.0)
+    band_lo = price * (1.0 - liq_band / 100.0)
+    st.success("Band guide @ $%s · **±%.0f%%** → ABOVE up to **$%s** · BELOW down to **$%s**\n\nOn CoinGlass: sum all bars from current price up to the ABOVE limit, and all bars from current price down to the BELOW limit. Nearest point = first strong peak inside each side of the band." % ("{:,.0f}".format(price), liq_band, "{:,.0f}".format(band_hi), "{:,.0f}".format(band_lo)))
+else:
+    st.warning("Price unavailable — band levels cannot be computed yet.")
+
+with st.form("confluence_form"):
+    st.markdown("##### Core inputs")
+    c1, c2 = st.columns(2)
+    with c1:
+        f_fund = st.number_input("Funding % (8h)", value=float(funding_pct) if funding_pct is not None else 0.0, step=0.001, format="%.4f", help="Binance-style 8h rate in percent. Mild positive ≈ +0.01 to +0.03.")
+        f_rsi = st.number_input("RSI (14) — from selected TF", value=float(auto_rsi) if auto_rsi is not None else 50.0, step=0.1, format="%.1f", help="Wilder RSI(14) auto-loaded from selected TF candles. Override only if you prefer another source.")
+        f_share = st.number_input("Long share % (24h volume)", value=50.0, step=1.0, format="%.1f", help="From CoinGlass / exchange long-short ratio.")
+        f_price_chg = st.number_input("Price change %% (%s window)" % conf_tf, value=float(auto_price_chg) if auto_price_chg is not None else 0.0, step=0.01, format="%.2f", help="Auto-filled from last closed %s candle. OI must use same window." % conf_tf)
+    with c2:
+        f_oi_chg = st.number_input("OI change %% (same %s window)" % conf_tf, value=0.0, step=0.1, format="%.2f", help="OI %% change for the SAME window (%s). From CoinGlass." % conf_tf)
+        f_pa_long = st.checkbox("PA confirm LONG (support held / reclaim)", value=False)
+        f_pa_short = st.checkbox("PA confirm SHORT (resistance rejection)", value=False)
+    st.markdown("##### Liquidation map (Rule B: ±%.0f%% band)" % liq_band)
+    with st.expander("ℹ️ What to enter here (tap to open)", expanded=False):
+        st.markdown(
+            """
+**Band (1% / 2% / 3%)** — same distance both sides. Only bars **inside** this band count.
+
+| Field | What to put | What NOT to put |
+|--------|-------------|-----------------|

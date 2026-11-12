@@ -9,10 +9,18 @@ if h1 and chart_snapshot:
     snap = chart_snapshot(h1)
     if snap:
         st.markdown("#### Chart Snapshot (1h)")
+        bs = snap.get("bounce_score", 0)
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.metric("Bounce Score", f"{bs}/100", help="Higher = stronger mean-reversion bounce setup (RSI extremity + SMA distance + vol + ATR)")
+        with col_b:
+            st.metric("RSI", f"{snap.get('rsi', 0)}")
         st.code(chart_caption(snap) if chart_caption else str(snap), language=None)
         if snap.get("long_caution") or snap.get("short_caution") or snap.get("caution"):
             st.warning("Caution active — see flags above")
-        if snap.get("bounce_potential"):
+        if bs >= 70:
+            st.success(f"Strong bounce setup (score {bs}) — mean-reversion bias elevated")
+        elif snap.get("bounce_potential"):
             st.info("Bounce potential flagged (low RSI + weak vol)")
 
 st.markdown("---")

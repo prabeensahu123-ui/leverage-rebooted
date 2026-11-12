@@ -2,7 +2,7 @@
 chart_read.py
 Technical snapshot of recent candles for caution flags and structure notes.
 Used by Streamlit chart section and model signal filters.
-Enhanced with extreme RSI bounce detection and structure details.
+Enhanced with extreme RSI bounce detection, bounce_score, and structure details.
 """
 
 from __future__ import annotations
@@ -31,6 +31,38 @@ def _atr(high, low, close, period: int = 14) -> float:
     prev[0] = close[0]
     tr = np.maximum(high - low, np.maximum(np.abs(high - prev), np.abs(low - prev)))
     return float(np.mean(tr[-period:])) if len(tr) >= period else float(np.mean(tr))
+
+
+def _bounce_score(rsi: float, dist_sma20_pct: float, vol_z: float, atr_ratio: float) -> int:
+    """0-100 score for mean-reversion bounce likelihood. Higher = stronger bounce setup."""
+    score = 0
+    # RSI extremity (primary)
+    if rsi < 15:
+        score += 45
+    elif rsi < 20:
+        score += 40
+    elif rsi < 25:
+        score += 35
+    elif rsi < 30:
+        score += 25
+    elif rsi < 35:
+        score += 15
+    # Distance below SMA20
+    if dist_sma20_pct < -3.0:
+        score += 25
+    elif dist_sma20_pct < -1.5:
+        score += 18
+    elif dist_sma20_pct < -0.5:
+        score += 10
+    # Low volume supports exhaustion
+    if vol_z < -0.5:
+        score += 15
+    elif vol_z < 0.5:
+        score += 8
+    # Not too compressed (some volatility for move)
+    if atr_ratio > 0.004:
+        score += 10
+    return min(100, score)
 
 
 def snapshot(candles: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -97,6 +129,12 @@ def snapshot(candles: List[Dict[str, Any]]) -> Dict[str, Any]:
     dist_sma20_pct = (price - sma20) / sma20 * 100 if sma20 else 0
     dist_sma50_pct = (price - sma50) / sma50 * 100 if sma50 else 0
 
+    bounce_score = _bounce_score(rsi, dist_sma20_pct, vol_z, avg_atr_ratio)
+    if bounce_score >= 70:
+        notes.append(f"High bounce_score {bounce_score}/100 — consider mean-reversion bias")
+    elif bounce_score >= 50:
+        notes.append(f"Moderate bounce_score {bounce_score}/100")
+
     caution = long_caution or short_caution
 
     return {
@@ -114,6 +152,7 @@ def snapshot(candles: List[Dict[str, Any]]) -> Dict[str, Any]:
         "caution": caution,
         "bounce_potential": bounce_potential,
         "extreme_oversold": extreme_oversold,
+        "bounce_score": bounce_score,
         "notes": notes,
         "structure": "above_sma20" if price > sma20 else "below_sma20",
     }
@@ -126,6 +165,7 @@ def caption(snap: Dict[str, Any]) -> str:
         f"Price ${snap['price']:,.2f} | RSI {snap['rsi']} | ATR {snap['atr']}",
         f"SMA20 ${snap['sma20']:,.2f} ({snap.get('dist_sma20_pct', 0):+.1f}%) | SMA50 ${snap['sma50']:,.2f} ({snap.get('dist_sma50_pct', 0):+.1f}%) | {snap['structure']}",
         f"Vol z {snap['vol_zscore']} | Long caution: {snap['long_caution']} | Short caution: {snap['short_caution']}",
+        f"Bounce score: {snap.get('bounce_score', 0)}/100",
     ]
     if snap.get("extreme_oversold"):
         lines.append("⚠️ EXTREME OVERSOLD — bounce potential high")

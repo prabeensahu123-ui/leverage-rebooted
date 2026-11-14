@@ -88,13 +88,30 @@ if funding_pct is not None and funding_regime:
     st.info("**%s** — %s" % (reg.replace("_", " "), REGIME_BIAS.get(reg, "")))
 
 if h1 and HAS_PLOTLY and len(h1) > 10:
-    st.markdown("#### 1h Chart")
+    st.markdown("#### 1h Chart (enhanced)")
     closes_arr = np.array([c["close"] for c in h1], float)
+    volumes = np.array([float(c.get("volume", 0)) for c in h1])
     times = [datetime.fromtimestamp(c.get("time", 0), tz=timezone.utc) for c in h1]
-    fig = go.Figure(data=[go.Candlestick(
+    from plotly.subplots import make_subplots
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
+    fig.add_trace(go.Candlestick(
         x=times, open=[c.get("open", c["close"]) for c in h1],
         high=[c["high"] for c in h1], low=[c["low"] for c in h1],
         close=closes_arr, name=name,
-    )])
+    ), row=1, col=1)
+    fig.add_trace(go.Bar(x=times, y=volumes, name="Volume", marker_color="rgba(100,150,255,0.4)"), row=2, col=1)
     if len(closes_arr) >= 20:
         sma20 = np.convolve(closes_arr, np.ones(20) / 20, mode="valid")
+        fig.add_trace(go.Scatter(x=times[-len(sma20):], y=sma20, mode="lines", name="SMA20", line=dict(color="yellow", width=1.5)), row=1, col=1)
+        # Bollinger
+        std20 = np.std(closes_arr[-20:])
+        upper = sma20[-1] + 2 * std20
+        lower = sma20[-1] - 2 * std20
+        fig.add_hline(y=upper, line_dash="dot", line_color="orange", annotation_text="BB upper", row=1, col=1)
+        fig.add_hline(y=lower, line_dash="dot", line_color="orange", annotation_text="BB lower", row=1, col=1)
+    if len(closes_arr) >= 50:
+        sma50 = np.convolve(closes_arr, np.ones(50) / 50, mode="valid")
+        fig.add_trace(go.Scatter(x=times[-len(sma50):], y=sma50, mode="lines", name="SMA50", line=dict(color="cyan", width=1.5)), row=1, col=1)
+    fig.update_layout(height=520, margin=dict(l=10, r=10, t=40, b=10), xaxis_rangeslider_visible=False, template="plotly_dark", title=f"{name} 1h · SMAs + BB + Volume")
+    fig.update_xaxes(rangeslider_visible=False)
+    st.plotly_chart(fig, use_container_width=True)

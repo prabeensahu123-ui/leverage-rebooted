@@ -75,6 +75,32 @@ symbol = st.session_state.symbol
 @st.cache_data(ttl=20, show_spinner=False)
 def fetch_ticker(s):
     try:
-        return requests.get("%s/v2/tickers/%s" % (DELTA, s), timeout=8).json()
+        return requests.get("%s/v2/tickers/%s" % (DELTA, s), timeout=8).json().get("result", {})
     except Exception:
         return {}
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_candles(s, res, days):
+    end = int(time.time())
+    start = end - days * 86400
+    try:
+        r = requests.get(
+            "%s/v2/history/candles" % DELTA,
+            params={"resolution": res, "symbol": s, "start": start, "end": end},
+            timeout=15,
+        ).json()
+        rows = r.get("result", []) if isinstance(r, dict) else r
+        # Delta returns newest-first; oldest-first needed for RSI/indicators
+        return list(reversed(rows)) if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+def load_paper_state():
+    if not os.path.exists(STATE_FILE):
+        return {"open_trades": [], "history": []}
+    try:
+        with open(STATE_FILE) as f:
+            stt = json.load(f)
+        ot = stt.get("open_trades", [])
+        if isinstance(ot, dict):
+            ot = list(ot.values()) if ot else []
